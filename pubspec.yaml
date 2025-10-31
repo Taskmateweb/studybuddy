@@ -1,0 +1,45 @@
+name: studybuddy
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.5
+  firebase_core: ^3.2.0
+  firebase_auth: ^5.1.2
+  cloud_firestore: ^5.1.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  flutter_local_notifications: ^17.1.2
+  fl_chart: ^0.68.0
+  intl: ^0.18.0
+  shared_preferences: ^2.3.2
+  google_fonts: ^6.2.0
+  uuid: ^3.0.6   # <-- add this line
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_native_splash: ^2.4.0  # Add this line
+
+flutter:
+  uses-material-design: true
+
+# Splash Screen Configuration (Simple, no logo needed)
+flutter_native_splash:
+  color: "#667EEA"              # Match your app's purple color
+  color_dark: "#1A237E"         # Dark mode purple
+  android_12:
+    color: "#667EEA"
+    color_dark: "#1A237E"
+  android: true
+  ios: true
+  web: false
+  fullscreen: true

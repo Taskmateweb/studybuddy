@@ -21,7 +21,9 @@ dependencies:
   intl: ^0.18.0
   shared_preferences: ^2.3.2
   google_fonts: ^6.2.0
-  uuid: ^3.0.6   # <-- add this line
+  uuid: ^3.0.6
+  audioplayers: ^6.0.0
+  vibration: ^2.0.0
 
 dev_dependencies:
   flutter_test:

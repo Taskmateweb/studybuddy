@@ -201,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Icons.psychology_outlined,
                       const Color(0xFF667EEA),
                       () {
-                        // Navigate to focus mode
+                        Navigator.pushNamed(context, '/focus');
                       },
                     ),
                     _buildQuickAction(
@@ -225,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Icons.calendar_today,
                       const Color(0xFF00BCD4),
                       () {
-                        // Navigate to routine
+                        Navigator.pushNamed(context, '/routine');
                       },
                     ),
                   ],
@@ -1043,10 +1043,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         : Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
+      onTap: () async {
+        // Navigate to different screens based on index
+        if (index == 1) {
+          await Navigator.pushNamed(context, '/routine');
+          // Reset to home tab when returning
+          setState(() {
+            _selectedIndex = 0;
+          });
+        } else if (index == 2) {
+          await Navigator.pushNamed(context, '/focus');
+          // Reset to home tab when returning
+          setState(() {
+            _selectedIndex = 0;
+          });
+        } else {
+          // For Home and Stats, just change tab
+          setState(() {
+            _selectedIndex = index;
+          });
+        }
+        // Add navigation for Stats (index 3) as feature is implemented
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

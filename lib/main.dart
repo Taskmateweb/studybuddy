@@ -5,6 +5,9 @@ import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/add_task_screen.dart';
+import 'screens/routine_screen.dart';
+import 'screens/add_routine_screen.dart';
+import 'screens/focus_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +47,9 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
         '/add-task': (context) => const AddTaskScreen(),
+        '/routine': (context) => const RoutineScreen(),
+        '/add-routine': (context) => const AddRoutineScreen(),
+        '/focus': (context) => const FocusScreen(),
       },
     );
   }

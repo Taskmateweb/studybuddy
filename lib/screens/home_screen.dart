@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/task_service.dart';
+import '../services/activity_service.dart';
+import '../services/focus_service.dart';
 import '../models/task_model.dart';
+import '../models/focus_session_model.dart';
 import 'task_detail_sheet.dart';
 import '../widgets/celebration_overlay.dart';
 
@@ -16,6 +20,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late AnimationController _animationController;
   final user = FirebaseAuth.instance.currentUser;
   int _selectedIndex = 0;
+  StreamSubscription<User?>? _authSub;
+  bool _didRedirectAfterSignOut = false;
 
   @override
   void initState() {
@@ -25,10 +31,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 800),
     );
     _animationController.forward();
+
+    // Redirect to landing automatically when auth state becomes null
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((u) {
+      if (!mounted) return;
+      if (u == null && !_didRedirectAfterSignOut) {
+        _didRedirectAfterSignOut = true;
+        // Defer to next frame to avoid context issues during rebuilds
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final rootContext = Navigator.of(context, rootNavigator: true).context;
+          Navigator.of(rootContext).pushNamedAndRemoveUntil(
+            '/landing',
+            (route) => false,
+          );
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -48,6 +72,366 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return user!.email!.split('@')[0];
     }
     return 'Student';
+  }
+
+  String _getUserInitials() {
+    if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+      final parts = user!.displayName!.split(' ');
+      if (parts.length >= 2) {
+        return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+      }
+      return parts[0][0].toUpperCase();
+    }
+    if (user?.email != null) {
+      return user!.email![0].toUpperCase();
+    }
+    return 'S';
+  }
+
+  String _getUserEmail() {
+    return user?.email ?? 'No email';
+  }
+
+  String _getUserFullName() {
+    if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+      return user!.displayName!;
+    }
+    if (user?.email != null) {
+      return user!.email!.split('@')[0];
+    }
+    return 'Student';
+  }
+
+  void _showProfileModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          children: [
+            // Drag Handle
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Profile Header
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Hero(
+                    tag: 'profile_avatar',
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.2),
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 3,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _getUserInitials(),
+                          style: const TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _getUserFullName(),
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.email_outlined, color: Colors.white, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          _getUserEmail(),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Profile Options
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(24),
+                children: [
+                  _buildProfileOption(
+                    icon: Icons.person_outline,
+                    title: 'Edit Profile',
+                    subtitle: 'Update your personal information',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Navigate to edit profile
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Edit Profile - Coming Soon!')),
+                      );
+                    },
+                  ),
+                  _buildProfileOption(
+                    icon: Icons.notifications_outlined,
+                    title: 'Notifications',
+                    subtitle: 'Manage notification preferences',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Navigate to notifications settings
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Notifications - Coming Soon!')),
+                      );
+                    },
+                  ),
+                  _buildProfileOption(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Appearance',
+                    subtitle: 'Theme and display settings',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Navigate to appearance settings
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Appearance - Coming Soon!')),
+                      );
+                    },
+                  ),
+                  _buildProfileOption(
+                    icon: Icons.security_outlined,
+                    title: 'Privacy & Security',
+                    subtitle: 'Manage your account security',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Navigate to privacy settings
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Privacy - Coming Soon!')),
+                      );
+                    },
+                  ),
+                  _buildProfileOption(
+                    icon: Icons.help_outline,
+                    title: 'Help & Support',
+                    subtitle: 'Get help and contact support',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Navigate to help
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Help - Coming Soon!')),
+                      );
+                    },
+                  ),
+                  _buildProfileOption(
+                    icon: Icons.info_outline,
+                    title: 'About',
+                    subtitle: 'App version and information',
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Show about dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('StudyBuddy v1.0.0')),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    height: 1,
+                    color: Colors.grey.shade200,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildProfileOption(
+                    icon: Icons.logout,
+                    title: 'Sign Out',
+                    subtitle: 'Sign out of your account',
+                    isDestructive: true,
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          title: const Row(
+                            children: [
+                              Icon(Icons.logout, color: Colors.red),
+                              SizedBox(width: 12),
+                              Text('Sign Out'),
+                            ],
+                          ),
+                          content: const Text(
+                            'Are you sure you want to sign out?',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Sign Out'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true && mounted) {
+                        // Sign out first; this will trigger auth listeners and may rebuild widgets
+                        await FirebaseAuth.instance.signOut();
+
+                        // Use root navigator to avoid disposed bottom sheet context
+                        final rootContext = Navigator.of(context, rootNavigator: true).context;
+
+                        // Schedule navigation after current frame to ensure widget tree stabilizes
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          Navigator.of(rootContext).pushNamedAndRemoveUntil(
+                            '/landing',
+                            (route) => false,
+                          );
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: isDestructive
+              ? Colors.red.shade50
+              : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDestructive
+                ? Colors.red.shade100
+                : Colors.grey.shade200,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDestructive
+                    ? Colors.red.shade100
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: isDestructive ? Colors.red : const Color(0xFF667EEA),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isDestructive ? Colors.red.shade700 : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDestructive
+                          ? Colors.red.shade400
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: isDestructive ? Colors.red.shade300 : Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -74,38 +458,64 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getGreeting(),
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _getGreeting(),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _getUserName(),
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
+                          const SizedBox(height: 4),
+                          Text(
+                            _getUserName(),
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    CircleAvatar(
-                      radius: 25,
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.person,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    GestureDetector(
+                      onTap: () => _showProfileModal(),
+                      child: Hero(
+                        tag: 'profile_avatar',
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF667EEA).withOpacity(0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              _getUserInitials(),
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
                         ),
-                        onPressed: () {
-                          // Navigate to profile
-                        },
                       ),
                     ),
                   ],
@@ -124,15 +534,63 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 20),
                 Row(
                   children: [
+                    // Study Hours - include completed and in-progress sessions
                     Expanded(
-                      child: _buildStatCard(
-                        'Study Hours',
-                        '4.5h',
-                        Icons.timer_outlined,
-                        const Color(0xFF667EEA),
+                      child: StreamBuilder<List<FocusSession>>(
+                        stream: FocusService().getTodaySessions(),
+                        builder: (context, snapshot) {
+                          print('📊 Study Hours - Connection State: ${snapshot.connectionState}');
+                          print('📊 Study Hours - Has Error: ${snapshot.hasError}');
+                          if (snapshot.hasError) {
+                            print('📊 Study Hours - Error: ${snapshot.error}');
+                          }
+                          
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return _buildStatCard(
+                              'Study Hours',
+                              '...',
+                              Icons.timer_outlined,
+                              const Color(0xFF667EEA),
+                            );
+                          }
+
+                          final sessions = snapshot.data ?? [];
+                          print('📊 Study Hours - Sessions count: ${sessions.length}');
+                          
+                          final now = DateTime.now();
+
+                          int totalMinutes = 0;
+                          for (var s in sessions) {
+                            print('📊 Session: ${s.taskTitle ?? "No task"}, isCompleted: ${s.isCompleted}, duration: ${s.duration} min');
+                            if (s.isCompleted && s.endTime != null) {
+                              // Completed session: use actual duration
+                              final minutes = s.endTime!.difference(s.startTime).inMinutes;
+                              print('📊 Completed session - adding $minutes minutes');
+                              totalMinutes += minutes;
+                            } else if (!s.isCompleted) {
+                              // In-progress session: count elapsed minutes up to duration limit
+                              final elapsed = now.difference(s.startTime).inMinutes;
+                              final clamped = elapsed.clamp(0, s.duration);
+                              print('📊 In-progress session - elapsed: $elapsed, clamped: $clamped');
+                              totalMinutes += clamped;
+                            }
+                          }
+
+                          print('📊 Total minutes: $totalMinutes');
+                          final hours = (totalMinutes / 60).toStringAsFixed(1);
+                          print('📊 Display hours: ${hours}h');
+                          
+                          return _buildStatCard(
+                            'Study Hours',
+                            '${hours}h',
+                            Icons.timer_outlined,
+                            const Color(0xFF667EEA),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
+                    // Tasks Done - Already working
                     Expanded(
                       child: StreamBuilder<int>(
                         stream: TaskService().getCompletedTasksTodayStream(),
@@ -152,21 +610,52 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 16),
                 Row(
                   children: [
+                    // Total Tasks - Incomplete tasks
                     Expanded(
-                      child: _buildStatCard(
-                        'Total Tasks',
-                        '24',
-                        Icons.assignment_outlined,
-                        const Color(0xFFF093FB),
+                      child: StreamBuilder<List<Task>>(
+                        stream: TaskService().getUserTasks(),
+                        builder: (context, snapshot) {
+                          print('🔷 Total Tasks Card - Connection: ${snapshot.connectionState}');
+                          print('🔷 Total Tasks Card - Has Error: ${snapshot.hasError}');
+                          if (snapshot.hasError) {
+                            print('🔷 Total Tasks Card - Error: ${snapshot.error}');
+                          }
+                          
+                          if (snapshot.hasError) {
+                            return _buildStatCard(
+                              'Total Tasks',
+                              'Error',
+                              Icons.error_outline,
+                              Colors.red,
+                            );
+                          }
+                          
+                          final tasks = snapshot.data ?? [];
+                          print('🔷 Total Tasks Card - Tasks: ${tasks.length}');
+                          final incompleteTasks = tasks.where((t) => !t.isCompleted).length;
+                          return _buildStatCard(
+                            'Total Tasks',
+                            '$incompleteTasks',
+                            Icons.assignment_outlined,
+                            const Color(0xFFF093FB),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
+                    // Activity Streak - Days in a row
                     Expanded(
-                      child: _buildStatCard(
-                        'Focus Score',
-                        '85%',
-                        Icons.insights,
-                        const Color(0xFF4FACFE),
+                      child: FutureBuilder<int>(
+                        future: ActivityService().getStreak(),
+                        builder: (context, snapshot) {
+                          final streak = snapshot.data ?? 0;
+                          return _buildStatCard(
+                            'Streak',
+                            '${streak}d',
+                            Icons.local_fire_department,
+                            const Color(0xFFF093FB),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -320,59 +809,243 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 
                 const SizedBox(height: 16),
                 
-                // Extra-Curricular Activities Grid
-                Text(
-                  'Extra-Curricular Activities',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
-                  ),
+                // Extra-Curricular Activities Section
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Extra-Curricular Activities',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/extra-curricular');
+                      },
+                      child: const Text('View All'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildActivityCard(
-                        'Sports',
-                        Icons.sports_soccer,
-                        const Color(0xFF4CAF50),
-                        '30 min',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildActivityCard(
-                        'Music',
-                        Icons.music_note,
-                        const Color(0xFFFF9800),
-                        '20 min',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildActivityCard(
-                        'Art',
-                        Icons.palette,
-                        const Color(0xFFE91E63),
-                        '25 min',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildActivityCard(
-                        'Reading',
-                        Icons.menu_book,
-                        const Color(0xFF9C27B0),
-                        '40 min',
-                      ),
-                    ),
-                  ],
+                // Today's Activities Summary - Using StreamBuilder for real-time updates
+                StreamBuilder<Map<String, dynamic>>(
+                  stream: ActivityService().getTodaySummary(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    }
+
+                    if (snapshot.hasError) {
+                      // Show placeholder on error
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/extra-curricular');
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF667EEA).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFF667EEA).withOpacity(0.2),
+                              width: 2,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.sports_handball,
+                                size: 48,
+                                color: const Color(0xFF667EEA).withOpacity(0.5),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Tap to log activities',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    final stats = snapshot.data ?? {};
+                    final todayMinutes = stats['todayMinutes'] ?? 0;
+                    final todayCount = stats['todayCount'] ?? 0;
+                    final categoryStats = stats['categoryStats'] as Map<String, int>? ?? {};
+
+                    if (todayCount == 0) {
+                      // Show placeholder when no activities today
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/extra-curricular');
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF667EEA).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFF667EEA).withOpacity(0.2),
+                              width: 2,
+                              style: BorderStyle.solid,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.sports_handball,
+                                size: 48,
+                                color: const Color(0xFF667EEA).withOpacity(0.5),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No activities logged today',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap to start tracking your activities!',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    // Show today's summary
+                    return Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF667EEA).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.emoji_events,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Today\'s Activities',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '$todayCount ${todayCount == 1 ? 'activity' : 'activities'} • $todayMinutes minutes',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
+                                onPressed: () {
+                                  Navigator.pushNamed(context, '/extra-curricular');
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Show top categories if available
+                        if (categoryStats.isNotEmpty)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: categoryStats.entries.take(4).map((entry) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _getCategoryColorByName(entry.key).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: _getCategoryColorByName(entry.key).withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _getCategoryIconByName(entry.key),
+                                      size: 16,
+                                      color: _getCategoryColorByName(entry.key),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${entry.key}: ${entry.value}m',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _getCategoryColorByName(entry.key),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -409,6 +1082,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 StreamBuilder<List<Task>>(
                   stream: TaskService().getUserTasks(),
                   builder: (context, snapshot) {
+                    print('🔷 Tasks StreamBuilder - Connection: ${snapshot.connectionState}');
+                    print('🔷 Tasks StreamBuilder - Has Error: ${snapshot.hasError}');
+                    if (snapshot.hasError) {
+                      print('🔷 Tasks StreamBuilder - Error: ${snapshot.error}');
+                    }
+                    
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
                         child: Padding(
@@ -419,17 +1098,81 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     }
 
                     if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Error loading tasks',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
+                      final errorMessage = snapshot.error.toString();
+                      final isPermissionError = errorMessage.contains('permission-denied') || 
+                                                errorMessage.contains('PERMISSION_DENIED');
+                      final isIndexError = errorMessage.contains('failed-precondition');
+                      
+                      return Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: isPermissionError ? Colors.orange.shade50 : Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isPermissionError ? Colors.orange.shade200 : Colors.red.shade200,
                           ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                              size: 48,
+                              color: isPermissionError ? Colors.orange.shade400 : Colors.red.shade400,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              isPermissionError ? 'Please Sign In' : 'Error Loading Tasks',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isPermissionError ? Colors.orange.shade700 : Colors.red.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              isPermissionError
+                                  ? 'You need to sign in to view your tasks.'
+                                  : isIndexError
+                                      ? 'Database index is building...\nPlease wait a few minutes.'
+                                      : 'Unable to load tasks.\nPlease check your connection.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isPermissionError ? Colors.orange.shade600 : Colors.red.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                if (isPermissionError) {
+                                  // Navigate to landing and clear stack
+                                  // Use root navigator to avoid issues if this widget rebuilds during auth state change
+                                  final rootContext = Navigator.of(context, rootNavigator: true).context;
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    Navigator.of(rootContext).pushNamedAndRemoveUntil(
+                                      '/landing',
+                                      (route) => false,
+                                    );
+                                  });
+                                } else {
+                                  // Trigger rebuild
+                                  setState(() {});
+                                }
+                              },
+                              icon: Icon(isPermissionError ? Icons.login : Icons.refresh),
+                              label: Text(isPermissionError ? 'Sign In' : 'Retry'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isPermissionError ? Colors.orange.shade400 : Colors.red.shade400,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }
 
                     final tasks = snapshot.data ?? [];
+                    print('🔷 Tasks StreamBuilder - Tasks count: ${tasks.length}');
 
                     // Separate active and completed tasks
                     final now = DateTime.now();
@@ -728,72 +1471,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildActivityCard(String title, IconData icon, Color color, String duration) {
-    return GestureDetector(
-      onTap: () {
-        // Navigate to activity details or tracker
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Track your $title activity!'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-            width: 1.5,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: color, size: 28),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    duration,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: color,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Today',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Color _getCategoryColorByName(String category) {
+    final colorMap = {
+      'Sports': const Color(0xFF4CAF50),
+      'Music': const Color(0xFFFF9800),
+      'Art': const Color(0xFFE91E63),
+      'Reading': const Color(0xFF9C27B0),
+      'Dance': const Color(0xFFFF5722),
+      'Photography': const Color(0xFF00BCD4),
+      'Coding': const Color(0xFF3F51B5),
+      'Volunteering': const Color(0xFFFFC107),
+    };
+    return colorMap[category] ?? const Color(0xFF667EEA);
+  }
+
+  IconData _getCategoryIconByName(String category) {
+    final iconMap = {
+      'Sports': Icons.sports_soccer,
+      'Music': Icons.music_note,
+      'Art': Icons.palette,
+      'Reading': Icons.menu_book,
+      'Dance': Icons.celebration,
+      'Photography': Icons.camera_alt,
+      'Coding': Icons.code,
+      'Volunteering': Icons.volunteer_activism,
+    };
+    return iconMap[category] ?? Icons.star;
   }
 
   Widget _buildTaskCard(Task task, Color color) {

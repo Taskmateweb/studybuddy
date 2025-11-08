@@ -285,7 +285,13 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
 
   Future<void> _triggerSystemAlarm() async {
     try {
-      // Vibrate the device
+      // Play multiple system sounds for louder alarm
+      for (int i = 0; i < 3; i++) {
+        await SystemSound.play(SystemSoundType.alert);
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      
+      // Vibrate the device with strong pattern
       if (await Vibration.hasVibrator()) {
         // Pattern: vibrate for 500ms, pause 200ms, repeat 3 times
         Vibration.vibrate(
@@ -293,13 +299,6 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
           intensities: [0, 255, 0, 255, 0, 255],
         );
       }
-
-      // Play system notification sound
-      await SystemSound.play(SystemSoundType.alert);
-      
-      // Wait a bit and play again for emphasis
-      await Future.delayed(const Duration(milliseconds: 800));
-      await SystemSound.play(SystemSoundType.alert);
       
       // Show visual feedback with snackbars
       for (int i = 0; i < 2; i++) {
@@ -369,7 +368,10 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   }
 
   void _showTaskSelector() async {
-    final tasks = await TaskService().getUserTasks().first;
+    final allTasks = await TaskService().getUserTasks().first;
+    
+    // Filter only incomplete tasks
+    final tasks = allTasks.where((task) => !task.isCompleted).toList();
     
     if (!mounted) return;
     
@@ -384,18 +386,55 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Select a Task',
+            const Row(
+              children: [
+                Icon(Icons.playlist_add_check, color: Color(0xFF667EEA)),
+                SizedBox(width: 12),
+                Text(
+                  'Select a Task',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose an incomplete task to focus on',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.grey.shade600,
               ),
             ),
             const SizedBox(height: 16),
             if (tasks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('No pending tasks'),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Icon(Icons.check_circle_outline, 
+                      size: 48, 
+                      color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No pending tasks',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'All tasks completed! 🎉',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
               )
             else
               ...tasks.map((task) => ListTile(
@@ -409,6 +448,10 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
                 ),
                 title: Text(task.title),
                 subtitle: Text(task.category ?? 'No category'),
+                trailing: Icon(
+                  Icons.radio_button_unchecked,
+                  color: Colors.grey.shade400,
+                ),
                 onTap: () {
                   setState(() {
                     _selectedTask = task;
@@ -1069,14 +1112,127 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Today\'s Focus Stats'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
           children: [
-            _buildStatRow('Pomodoros', stats['todayPomodoros'].toString()),
-            _buildStatRow('Minutes', stats['todayMinutes'].toString()),
-            _buildStatRow('Sessions', stats['todaySessions'].toString()),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF667EEA).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.bar_chart,
+                color: Color(0xFF667EEA),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Focus Statistics',
+              style: TextStyle(fontSize: 20),
+            ),
           ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Today's Stats Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Today',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${stats['todayMinutes']} min',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${stats['todaySessions']} sessions completed',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Detailed Stats
+              _buildDetailedStatCard(
+                icon: Icons.check_circle,
+                iconColor: Colors.green,
+                label: 'Total Sessions',
+                value: stats['todaySessions'].toString(),
+                subtitle: 'Focus sessions today',
+              ),
+              const SizedBox(height: 12),
+              _buildDetailedStatCard(
+                icon: Icons.local_fire_department,
+                iconColor: Colors.orange,
+                label: 'Completed Pomodoros',
+                value: stats['todayPomodoros'].toString(),
+                subtitle: 'Pomodoros completed',
+              ),
+              const SizedBox(height: 12),
+              _buildDetailedStatCard(
+                icon: Icons.timer,
+                iconColor: const Color(0xFF667EEA),
+                label: 'Total Minutes',
+                value: stats['todayMinutes'].toString(),
+                subtitle: 'Minutes focused',
+              ),
+              const SizedBox(height: 20),
+              
+              // Productivity Message
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.emoji_events, color: Colors.amber.shade700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _getProductivityMessage(stats['todayMinutes'] as int),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade900,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -1088,26 +1244,78 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+  Widget _buildDetailedStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 16),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _getProductivityMessage(int minutes) {
+    if (minutes == 0) {
+      return 'Start your first focus session today!';
+    } else if (minutes < 30) {
+      return 'Great start! Keep going! 💪';
+    } else if (minutes < 60) {
+      return 'Excellent progress! You\'re on fire! 🔥';
+    } else if (minutes < 120) {
+      return 'Amazing dedication! You\'re crushing it! 🚀';
+    } else {
+      return 'Incredible focus! You\'re a productivity champion! 🏆';
+    }
   }
 }
 

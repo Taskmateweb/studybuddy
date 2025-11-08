@@ -4,7 +4,7 @@ import '../services/routine_service.dart';
 import 'add_routine_screen.dart';
 
 class RoutineScreen extends StatefulWidget {
-  const RoutineScreen({Key? key}) : super(key: key);
+  const RoutineScreen({super.key});
 
   @override
   State<RoutineScreen> createState() => _RoutineScreenState();
@@ -665,7 +665,7 @@ class _RoutineScreenState extends State<RoutineScreen> with SingleTickerProvider
                               routine.isActive,
                             );
                           },
-                          activeColor: color,
+                          activeThumbColor: color,
                         ),
                       ],
                     ),

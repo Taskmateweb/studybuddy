@@ -9,7 +9,7 @@ import '../services/task_service.dart';
 import '../models/task_model.dart';
 
 class FocusScreen extends StatefulWidget {
-  const FocusScreen({Key? key}) : super(key: key);
+  const FocusScreen({super.key});
 
   @override
   State<FocusScreen> createState() => _FocusScreenState();
@@ -307,11 +307,11 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Row(
+              content: const Row(
                 children: [
-                  const Icon(Icons.celebration, color: Colors.white),
-                  const SizedBox(width: 12),
-                  const Text(
+                  Icon(Icons.celebration, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text(
                     '🎉 Session Complete!',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
@@ -958,15 +958,15 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.white30),
               ),
-              child: Column(
+              child: const Column(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.phone_disabled,
                     color: Colors.white70,
                     size: 32,
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
+                  SizedBox(height: 12),
+                  Text(
                     'Phone Locked During Focus',
                     style: TextStyle(
                       fontSize: 16,
@@ -974,8 +974,8 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
+                  SizedBox(height: 8),
+                  Text(
                     'Stay focused! Press back button\nto exit and unlock your phone',
                     textAlign: TextAlign.center,
                     style: TextStyle(

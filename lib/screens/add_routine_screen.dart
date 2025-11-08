@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/routine_service.dart';
 
 class AddRoutineScreen extends StatefulWidget {
-  const AddRoutineScreen({Key? key}) : super(key: key);
+  const AddRoutineScreen({super.key});
 
   @override
   State<AddRoutineScreen> createState() => _AddRoutineScreenState();

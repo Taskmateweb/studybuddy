@@ -99,6 +99,9 @@ class FocusService {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     
+    print('📊 getTodaySessions - userId: $_userId');
+    print('📊 getTodaySessions - startOfDay: $startOfDay');
+    
     return _firestore
         .collection('focus_sessions')
         .where('userId', isEqualTo: _userId)
@@ -106,9 +109,15 @@ class FocusService {
         .orderBy('startTime', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => FocusSession.fromMap(doc.data()))
+      print('📊 getTodaySessions - docs count: ${snapshot.docs.length}');
+      final sessions = snapshot.docs
+          .map((doc) {
+            print('📊 Session doc: ${doc.id}, data: ${doc.data()}');
+            return FocusSession.fromMap(doc.data());
+          })
           .toList();
+      print('📊 getTodaySessions - parsed sessions: ${sessions.length}');
+      return sessions;
     });
   }
 
@@ -116,30 +125,86 @@ class FocusService {
   Future<Map<String, dynamic>> getStats() async {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
-    
-    final todaySessions = await _firestore
+    // Fetch ALL of today's sessions (completed + in-progress) so UI stats match Study Hours card
+    final querySnapshot = await _firestore
         .collection('focus_sessions')
         .where('userId', isEqualTo: _userId)
         .where('startTime', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('isCompleted', isEqualTo: true)
+        .orderBy('startTime', descending: true)
         .get();
 
-    int totalPomodoros = 0;
-    int totalMinutes = 0;
+    int totalPomodoros = 0; // Sum of completed pomodoros across all sessions
+    int totalMinutes = 0;   // Completed minutes + elapsed minutes of active sessions (clamped to duration)
+    int completedSessions = 0;
 
-    for (var doc in todaySessions.docs) {
+    final now = DateTime.now();
+
+    for (var doc in querySnapshot.docs) {
       final session = FocusSession.fromMap(doc.data());
       totalPomodoros += session.completedPomodoros;
-      if (session.endTime != null) {
+      if (session.isCompleted && session.endTime != null) {
+        // Use actual duration between start & end
         totalMinutes += session.endTime!.difference(session.startTime).inMinutes;
+        completedSessions += 1;
+      } else {
+        // Active / in-progress session: count elapsed time so far (capped by planned duration)
+        final elapsed = now.difference(session.startTime).inMinutes;
+        final clamped = elapsed.clamp(0, session.duration);
+        totalMinutes += clamped;
       }
     }
 
     return {
       'todayPomodoros': totalPomodoros,
       'todayMinutes': totalMinutes,
-      'todaySessions': todaySessions.docs.length,
+      'todaySessions': completedSessions, // Keep "sessions" meaning completed sessions for consistency
+      'todayTotalSessions': querySnapshot.docs.length, // Optional: total (completed + active)
     };
+  }
+
+  // Get task-specific statistics
+  Future<Map<String, Map<String, dynamic>>> getTaskStats() async {
+  // Include both completed and in-progress sessions to reflect ongoing focus work
+  final sessions = await _firestore
+    .collection('focus_sessions')
+    .where('userId', isEqualTo: _userId)
+    .orderBy('startTime', descending: true)
+    .get();
+
+    Map<String, Map<String, dynamic>> taskStats = {};
+
+    for (var doc in sessions.docs) {
+      final session = FocusSession.fromMap(doc.data());
+      
+      if (session.taskId != null && session.taskTitle != null) {
+        final taskId = session.taskId!;
+        
+        if (!taskStats.containsKey(taskId)) {
+          taskStats[taskId] = {
+            'taskTitle': session.taskTitle,
+            'sessionCount': 0,
+            'totalMinutes': 0,
+            'totalPomodoros': 0,
+          };
+        }
+        
+        // Count every session (completed or active) toward sessionCount
+        taskStats[taskId]!['sessionCount'] = (taskStats[taskId]!['sessionCount'] as int) + 1;
+        taskStats[taskId]!['totalPomodoros'] = (taskStats[taskId]!['totalPomodoros'] as int) + session.completedPomodoros;
+
+        // Minutes calculation: completed => actual; in-progress => elapsed (capped at planned duration)
+        int addMinutes = 0;
+        if (session.isCompleted && session.endTime != null) {
+          addMinutes = session.endTime!.difference(session.startTime).inMinutes;
+        } else {
+          final elapsed = DateTime.now().difference(session.startTime).inMinutes;
+          addMinutes = elapsed.clamp(0, session.duration);
+        }
+        taskStats[taskId]!['totalMinutes'] = (taskStats[taskId]!['totalMinutes'] as int) + addMinutes;
+      }
+    }
+
+    return taskStats;
   }
 
   // Delete session

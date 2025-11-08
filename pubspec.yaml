@@ -33,6 +33,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/sounds/
 
 # Splash Screen Configuration (Simple, no logo needed)
 flutter_native_splash:

@@ -23,6 +23,8 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   int _completedPomodoros = 0;
   String? _activeSessionId;
   bool _isScreenLocked = false;
+  // Listen to active session changes so UI can restore state when returning
+  StreamSubscription? _activeSessionSub;
   
   // Settings
   int _focusMinutes = 25;
@@ -52,6 +54,61 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    // Subscribe to active focus session so we can restore state when
+    // the user navigates away and returns to this screen.
+    _activeSessionSub = FocusService().getActiveSession().listen((session) {
+      if (session == null) {
+        print('📍 FocusScreen: No active session found');
+        return;
+      }
+
+      print('📍 FocusScreen: Active session found - ID: ${session.id}, Status: ${session.status}, Pomodoros: ${session.completedPomodoros}');
+
+      // Only restore if we don't have an active session ID already
+      // This prevents overwriting user interactions
+      if (_activeSessionId != null && _activeSessionId == session.id) {
+        print('📍 FocusScreen: Session already active, skipping restore');
+        return;
+      }
+
+      // Restore UI state from active session
+      if (mounted && !session.isCompleted) {
+        final now = DateTime.now();
+        final elapsedSeconds = now.difference(session.startTime).inSeconds;
+        final totalSeconds = session.duration * 60;
+        final remaining = (totalSeconds - elapsedSeconds).clamp(0, totalSeconds).toInt();
+
+        print('📍 FocusScreen: Restoring session - Elapsed: $elapsedSeconds, Remaining: $remaining');
+
+        setState(() {
+          _activeSessionId = session.id;
+          _completedPomodoros = session.completedPomodoros;
+          _remainingSeconds = remaining;
+          _focusMinutes = session.duration;
+          _isRunning = (session.status == 'focus' || session.status == 'running') && remaining > 0;
+          _isPaused = session.status == 'paused';
+          _isScreenLocked = _isRunning;
+        });
+
+        if (_isRunning && remaining > 0) {
+          print('📍 FocusScreen: Restarting timer for remaining: $remaining seconds');
+          // Ensure visual animations are running
+          _rotationController.repeat();
+          _timer?.cancel();
+          _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (!mounted) return;
+            setState(() {
+              if (_remainingSeconds > 0) {
+                _remainingSeconds--;
+              } else {
+                _handlePhaseComplete();
+              }
+            });
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -61,7 +118,73 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     _rotationController.dispose();
     _customTimeController.dispose();
     _audioPlayer.dispose();
+    _activeSessionSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // This is called every time the widget's dependencies change,
+    // including when navigating back to this screen
+    print('📍 FocusScreen: didChangeDependencies called');
+    _checkForActiveSession();
+  }
+
+  // Manual check for active session
+  void _checkForActiveSession() async {
+    print('📍 FocusScreen: Checking for active session...');
+    final activeSessionSnapshot = await FocusService().getActiveSession().first;
+    
+    if (activeSessionSnapshot == null) {
+      print('📍 FocusScreen: No active session found');
+      return;
+    }
+
+    print('📍 FocusScreen: Found active session - ID: ${activeSessionSnapshot.id}');
+    
+    // Only restore if we don't already have this session
+    if (_activeSessionId == activeSessionSnapshot.id) {
+      print('📍 FocusScreen: Session already loaded');
+      return;
+    }
+
+    final now = DateTime.now();
+    final elapsedSeconds = now.difference(activeSessionSnapshot.startTime).inSeconds;
+    final totalSeconds = activeSessionSnapshot.duration * 60;
+    final remaining = (totalSeconds - elapsedSeconds).clamp(0, totalSeconds).toInt();
+
+    print('📍 FocusScreen: Restoring session - Elapsed: $elapsedSeconds, Remaining: $remaining');
+
+    if (remaining > 0 && mounted) {
+      setState(() {
+        _activeSessionId = activeSessionSnapshot.id;
+        _completedPomodoros = activeSessionSnapshot.completedPomodoros;
+        _remainingSeconds = remaining;
+        _focusMinutes = activeSessionSnapshot.duration;
+        _isRunning = (activeSessionSnapshot.status == 'focus' || activeSessionSnapshot.status == 'running');
+        _isPaused = activeSessionSnapshot.status == 'paused';
+        _isScreenLocked = _isRunning;
+      });
+
+      if (_isRunning && _timer == null) {
+        print('📍 FocusScreen: Starting timer');
+        _rotationController.repeat();
+        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          if (!mounted) return;
+          setState(() {
+            if (_remainingSeconds > 0) {
+              _remainingSeconds--;
+            } else {
+              _handlePhaseComplete();
+            }
+          });
+        });
+        
+        // Update session status in Firestore
+        await FocusService().updateSessionStatus(_activeSessionId!, 'focus');
+      }
+    }
   }
 
   Future<bool> _onWillPop() async {
@@ -115,6 +238,9 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   void _startTimer() {
     if (_activeSessionId == null) {
       _createNewSession();
+    } else {
+      // Update status to 'focus' when resuming
+      FocusService().updateSessionStatus(_activeSessionId!, 'focus');
     }
     
     setState(() {
@@ -285,47 +411,90 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
 
   Future<void> _triggerSystemAlarm() async {
     try {
-      // Play multiple system sounds for louder alarm
-      for (int i = 0; i < 3; i++) {
-        await SystemSound.play(SystemSoundType.alert);
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
-      
-      // Vibrate the device with strong pattern
+      // First, vibrate immediately for instant feedback
       if (await Vibration.hasVibrator()) {
-        // Pattern: vibrate for 500ms, pause 200ms, repeat 3 times
         Vibration.vibrate(
-          pattern: [0, 500, 200, 500, 200, 500],
-          intensities: [0, 255, 0, 255, 0, 255],
+          pattern: [0, 500, 200, 500, 200, 500, 200, 500, 200, 500],
+          intensities: [0, 255, 0, 255, 0, 255, 0, 255, 0, 255],
         );
       }
       
-      // Show visual feedback with snackbars
-      for (int i = 0; i < 2; i++) {
-        await Future.delayed(Duration(milliseconds: i * 400));
+      // Play system sounds rapidly for louder effect
+      // Increase volume and play more times
+      for (int i = 0; i < 8; i++) {
+        SystemSound.play(SystemSoundType.alert);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      
+      // Also try clicking sound
+      for (int i = 0; i < 3; i++) {
+        SystemSound.play(SystemSoundType.click);
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
+      // Show persistent visual feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.celebration, color: Colors.white, size: 28),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '🎉 Session Complete!',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Great job staying focused!',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
+          ),
+        );
+      }
+      
+      // Additional flash animations
+      for (int i = 0; i < 3; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.celebration, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text(
-                    '🎉 Session Complete!',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                ],
+              content: Text(
+                '⭐ ${i == 0 ? "Excellent!" : i == 1 ? "Well Done!" : "Keep Going!"}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
-              backgroundColor: Colors.green,
-              duration: const Duration(milliseconds: 600),
+              backgroundColor: Colors.orange,
+              duration: const Duration(milliseconds: 300),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              margin: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 80, vertical: 16),
             ),
           );
         }
       }
     } catch (e) {
+      debugPrint('Alarm error: $e');
       // Fallback: just show visual feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -579,27 +748,27 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: _isScreenLocked ? Colors.black87 : Colors.grey.shade50,
-        appBar: _isScreenLocked
-            ? null
-            : AppBar(
-                title: const Text('Focus Mode'),
-                elevation: 0,
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.black87,
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.timer_outlined),
-                    onPressed: _showCustomTimeDialog,
-                    tooltip: 'Custom Time',
+            backgroundColor: _isScreenLocked ? Colors.black87 : Colors.grey.shade50,
+            appBar: _isScreenLocked
+                ? null
+                : AppBar(
+                    title: const Text('Focus Mode'),
+                    elevation: 0,
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.black87,
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.timer_outlined),
+                        onPressed: _showCustomTimeDialog,
+                        tooltip: 'Custom Time',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.settings_outlined),
+                        onPressed: _showSettings,
+                        tooltip: 'Settings',
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined),
-                    onPressed: _showSettings,
-                    tooltip: 'Settings',
-                  ),
-                ],
-              ),
       body: _isScreenLocked 
           ? _buildLockedScreen()
           : SingleChildScrollView(
@@ -914,9 +1083,9 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
             ),
           ],
         ),
-        ),
-      ),
-    );
+      ), // SingleChildScrollView body
+    ), // Scaffold
+    ); // WillPopScope
   }
 
   Widget _buildLockedScreen() {
@@ -1106,201 +1275,651 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
 
   void _showStats() async {
     final stats = await FocusService().getStats();
+    final taskStats = await FocusService().getTaskStats();
     
     if (!mounted) return;
     
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF667EEA).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.bar_chart,
-                color: Color(0xFF667EEA),
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Focus Statistics',
-              style: TextStyle(fontSize: 20),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              // Today's Stats Header
+              // Drag Handle
               Container(
-                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: Column(
+              ),
+              
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Row(
                   children: [
-                    const Text(
-                      'Today',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF667EEA).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${stats['todayMinutes']} min',
-                      style: const TextStyle(
+                      child: const Icon(
+                        Icons.analytics_rounded,
                         color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
+                        size: 28,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${stats['todaySessions']} sessions completed',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Focus Statistics',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          Text(
+                            'Your productivity insights',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close, color: Colors.grey.shade600),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
               
-              // Detailed Stats
-              _buildDetailedStatCard(
-                icon: Icons.check_circle,
-                iconColor: Colors.green,
-                label: 'Total Sessions',
-                value: stats['todaySessions'].toString(),
-                subtitle: 'Focus sessions today',
-              ),
-              const SizedBox(height: 12),
-              _buildDetailedStatCard(
-                icon: Icons.local_fire_department,
-                iconColor: Colors.orange,
-                label: 'Completed Pomodoros',
-                value: stats['todayPomodoros'].toString(),
-                subtitle: 'Pomodoros completed',
-              ),
-              const SizedBox(height: 12),
-              _buildDetailedStatCard(
-                icon: Icons.timer,
-                iconColor: const Color(0xFF667EEA),
-                label: 'Total Minutes',
-                value: stats['todayMinutes'].toString(),
-                subtitle: 'Minutes focused',
-              ),
-              const SizedBox(height: 20),
+              const Divider(height: 1),
               
-              // Productivity Message
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
+              // Content
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(24),
                   children: [
-                    Icon(Icons.emoji_events, color: Colors.amber.shade700),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _getProductivityMessage(stats['todayMinutes'] as int),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.green.shade900,
-                          fontWeight: FontWeight.w500,
+                    // Hero Stats Card
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF667EEA).withOpacity(0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Today',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.access_time_filled,
+                                color: Colors.white70,
+                                size: 32,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${stats['todayMinutes']}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 56,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'min',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '${stats['todaySessions']} focus sessions completed',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          // Progress Bar
+                          Container(
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: ((stats['todayMinutes'] as int) / 180.0).clamp(0.0, 1.0),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Daily Goal: 180 min',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                '${(((stats['todayMinutes'] as int) / 180.0) * 100).toInt()}%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Section Title
+                    const Row(
+                      children: [
+                        Icon(Icons.insights, color: Color(0xFF667EEA), size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Detailed Breakdown',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Stats Grid
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildModernStatCard(
+                            icon: Icons.check_circle_rounded,
+                            iconColor: Colors.green,
+                            label: 'Sessions',
+                            value: stats['todaySessions'].toString(),
+                            gradient: LinearGradient(
+                              colors: [Colors.green.shade400, Colors.green.shade600],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildModernStatCard(
+                            icon: Icons.local_fire_department_rounded,
+                            iconColor: Colors.orange,
+                            label: 'Pomodoros',
+                            value: stats['todayPomodoros'].toString(),
+                            gradient: LinearGradient(
+                              colors: [Colors.orange.shade400, Colors.orange.shade600],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildModernStatCard(
+                            icon: Icons.timer_rounded,
+                            iconColor: const Color(0xFF667EEA),
+                            label: 'Minutes',
+                            value: stats['todayMinutes'].toString(),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildModernStatCard(
+                            icon: Icons.trending_up_rounded,
+                            iconColor: Colors.blue,
+                            label: 'Avg/Session',
+                            value: (stats['todaySessions'] as int) > 0 
+                              ? '${((stats['todayMinutes'] as int) / (stats['todaySessions'] as int)).round()}'
+                              : '0',
+                            gradient: LinearGradient(
+                              colors: [Colors.blue.shade400, Colors.blue.shade600],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Productivity Message
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.amber.shade50,
+                            Colors.orange.shade50,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.amber.shade200,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.emoji_events_rounded,
+                              color: Colors.amber.shade700,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Keep it up!',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _getProductivityMessage(stats['todayMinutes'] as int),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade700,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Task-Specific Statistics Section
+                    if (taskStats.isNotEmpty) ...[
+                      const Row(
+                        children: [
+                          Icon(Icons.assignment_turned_in, color: Color(0xFF667EEA), size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Tasks Focus History',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Sort tasks by session count and display
+                      ..._buildTaskStatsList(taskStats),
+                      
+                      const SizedBox(height: 24),
+                    ],
+                    
+                    // Tips Card
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.blue.shade100,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.lightbulb_rounded,
+                                color: Colors.blue.shade700,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Pro Tip',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Studies show that 25-minute focus sessions with 5-minute breaks improve productivity by up to 25%! 🚀',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.blue.shade800,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+      ),
+    );
+  }
+  
+  Widget _buildModernStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required Gradient gradient,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: iconColor.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: iconColor.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 24),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildDetailedStatCard({
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required String value,
-    required String subtitle,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+  
+  List<Widget> _buildTaskStatsList(Map<String, Map<String, dynamic>> taskStats) {
+    // Sort by session count descending and take top 10
+    final sortedTasks = taskStats.entries.toList()
+      ..sort((a, b) => (b.value['sessionCount'] as int).compareTo(a.value['sessionCount'] as int));
+    
+    final topTasks = sortedTasks.take(10);
+    
+    return topTasks.map((entry) {
+      final taskData = entry.value;
+      final taskTitle = taskData['taskTitle'] as String;
+      final sessionCount = taskData['sessionCount'] as int;
+      final totalMinutes = taskData['totalMinutes'] as int;
+      final totalPomodoros = taskData['totalPomodoros'] as int;
+      
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF667EEA).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.task_alt,
+                    color: Color(0xFF667EEA),
+                    size: 20,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    taskTitle,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTaskStatItem(
+                    icon: Icons.repeat,
+                    value: sessionCount.toString(),
+                    label: 'Sessions',
+                    color: Colors.green,
+                  ),
+                ),
+                Expanded(
+                  child: _buildTaskStatItem(
+                    icon: Icons.timer,
+                    value: totalMinutes.toString(),
+                    label: 'Minutes',
+                    color: Colors.orange,
+                  ),
+                ),
+                Expanded(
+                  child: _buildTaskStatItem(
+                    icon: Icons.local_fire_department,
+                    value: totalPomodoros.toString(),
+                    label: 'Pomodoros',
+                    color: Colors.red,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+  
+  Widget _buildTaskStatItem({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
           ),
-        ],
-      ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
     );
   }
 

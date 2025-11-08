@@ -10,18 +10,30 @@ class TaskService {
 
   // Get all tasks for current user
   Stream<List<Task>> getUserTasks() {
+    print('🔷 TaskService - Getting tasks for userId: $_userId');
+    
     return _firestore
         .collection('tasks')
         .where('userId', isEqualTo: _userId)
         .snapshots()
         .map((snapshot) {
+      print('🔷 TaskService - Received ${snapshot.docs.length} documents');
+      
       final tasks = snapshot.docs.map((doc) {
-        return Task.fromMap(doc.data(), doc.id);
+        try {
+          final task = Task.fromMap(doc.data(), doc.id);
+          print('🔷 TaskService - Parsed task: ${task.title}');
+          return task;
+        } catch (e) {
+          print('🔷 TaskService - Error parsing task ${doc.id}: $e');
+          rethrow;
+        }
       }).toList();
       
       // Sort by createdAt on client side to avoid index requirement
       tasks.sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Descending order
       
+      print('🔷 TaskService - Returning ${tasks.length} tasks');
       return tasks;
     });
   }

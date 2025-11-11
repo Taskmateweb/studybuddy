@@ -49,5 +49,10 @@
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<!-- Required for location services (Prayer times) -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>We need your location to calculate accurate prayer times based on your current position.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>We need your location to calculate accurate prayer times based on your current position.</string>
 	</dict>
 </plist>

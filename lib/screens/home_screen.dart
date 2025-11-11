@@ -800,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       IconButton(
                         icon: const Icon(Icons.arrow_forward_ios, color: Colors.white),
                         onPressed: () {
-                          // Navigate to prayer times
+                          Navigator.pushNamed(context, '/balance-your-life');
                         },
                       ),
                     ],

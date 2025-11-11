@@ -706,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Icons.play_circle_outline,
                       const Color(0xFFFF4081),
                       () {
-                        // Navigate to YouTube
+                        Navigator.pushNamed(context, '/youtube');
                       },
                     ),
                     _buildQuickAction(

@@ -6,6 +6,17 @@
     <!-- Required for vibration -->
     <uses-permission android:name="android.permission.VIBRATE" />
     
+    <!-- Required for location services (Prayer times) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- Required for notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Required for exact alarm scheduling (Prayer notifications) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    
     <application
         android:label="StudyBuddy"
         android:name="${applicationName}"

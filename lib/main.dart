@@ -10,6 +10,7 @@ import 'screens/add_routine_screen.dart';
 import 'screens/focus_screen.dart';
 import 'screens/extra_curricular_screen.dart';
 import 'screens/youtube_screen.dart';
+import 'screens/balance_your_life_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +55,7 @@ class MyApp extends StatelessWidget {
         '/focus': (context) => const FocusScreen(),
         '/extra-curricular': (context) => const ExtraCurricularScreen(),
         '/youtube': (context) => const YouTubeScreen(),
+        '/balance-your-life': (context) => const BalanceYourLifeScreen(),
       },
     );
   }

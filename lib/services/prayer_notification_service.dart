@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -12,8 +14,12 @@ class PrayerNotificationService {
 
   // Initialize notification service
   Future<void> initialize() async {
+    print('🕌 Initializing prayer notification service...');
+    
     // Initialize timezone data
     tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Dhaka')); // Bangladesh timezone
+    print('🕌 Timezone set to: ${tz.local}');
 
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -34,11 +40,60 @@ class PrayerNotificationService {
       settings,
       onDidReceiveNotificationResponse: _onNotificationTap,
     );
+    
+    // Create notification channels
+    await _createNotificationChannels();
+    print('🕌 Prayer notification service initialized successfully');
+  }
+  
+  // Create notification channels for Android
+  Future<void> _createNotificationChannels() async {
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidPlugin != null) {
+      // Prayer times notification channel with sound and vibration
+      await androidPlugin.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'prayer_times',
+          'Prayer Times',
+          description: 'Notifications for daily prayer times with Adhan',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          enableLights: true,
+          ledColor: Color(0xFF00FF00),
+        ),
+      );
+      
+      // Prayer reminder channel
+      await androidPlugin.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'prayer_reminders',
+          'Prayer Reminders',
+          description: 'Reminder notifications before prayer times',
+          importance: Importance.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+      
+      print('🕌 Created 2 prayer notification channels');
+    }
   }
 
   // Handle notification tap
   void _onNotificationTap(NotificationResponse response) {
-    print('Notification tapped: ${response.payload}');
+    print('🕌 Prayer notification tapped: ${response.payload}');
+    print('🕌 Action ID: ${response.actionId}');
+    
+    if (response.actionId == 'mark_prayed') {
+      print('🕌 User marked prayer as completed');
+      // You can add logic to mark prayer as completed
+    } else if (response.actionId == 'snooze') {
+      print('🕌 User snoozed prayer reminder');
+      // You can add snooze logic here
+    }
     // You can navigate to prayer times screen here
   }
 
@@ -90,10 +145,11 @@ class PrayerNotificationService {
       // Schedule notification at prayer time
       await _scheduleNotification(
         id: i * 2, // Use even numbers for prayer time notifications
-        title: '${prayer.arabicName} - ${prayer.name}',
-        body: 'It\'s time for ${prayer.name} prayer. May Allah accept your prayers.',
+        title: '🕌 ${prayer.arabicName} - ${prayer.name}',
+        body: 'It\'s time for ${prayer.name} prayer. May Allah accept your prayers. 🤲',
         scheduledTime: prayer.time,
         payload: prayer.name,
+        channelId: 'prayer_times',
         soundEnabled: settings.adhanSoundEnabled,
         vibrateEnabled: settings.vibrateEnabled,
       );
@@ -108,11 +164,12 @@ class PrayerNotificationService {
         if (reminderTime.isAfter(DateTime.now())) {
           await _scheduleNotification(
             id: i * 2 + 1, // Use odd numbers for reminder notifications
-            title: 'Prayer Reminder',
-            body: '${prayer.name} prayer in ${settings.reminderMinutes} minutes',
+            title: '⏰ Prayer Reminder',
+            body: '${prayer.name} prayer in ${settings.reminderMinutes} minutes. Prepare for prayer.',
             scheduledTime: reminderTime,
             payload: '${prayer.name}_reminder',
-            soundEnabled: false, // No sound for reminders
+            channelId: 'prayer_reminders',
+            soundEnabled: true, // Enable sound for reminders
             vibrateEnabled: settings.vibrateEnabled,
           );
         }
@@ -127,31 +184,61 @@ class PrayerNotificationService {
     required String body,
     required DateTime scheduledTime,
     required String payload,
+    required String channelId,
     bool soundEnabled = true,
     bool vibrateEnabled = true,
   }) async {
     // Only schedule if time is in the future
     if (scheduledTime.isBefore(DateTime.now())) {
+      print('⚠️ Skipping past notification: $title at $scheduledTime');
       return;
     }
 
+    print('🕌 Scheduling notification: $title at $scheduledTime');
+
     final androidDetails = AndroidNotificationDetails(
-      'prayer_times',
-      'Prayer Times',
-      channelDescription: 'Notifications for daily prayer times',
-      importance: Importance.high,
+      channelId,
+      channelId == 'prayer_times' ? 'Prayer Times' : 'Prayer Reminders',
+      channelDescription: channelId == 'prayer_times' 
+          ? 'Notifications for daily prayer times with Adhan'
+          : 'Reminder notifications before prayer times',
+      importance: channelId == 'prayer_times' ? Importance.max : Importance.high,
       priority: Priority.high,
       playSound: soundEnabled,
       enableVibration: vibrateEnabled,
+      vibrationPattern: Int64List.fromList([0, 1000, 500, 1000]),
       icon: '@mipmap/ic_launcher',
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-      styleInformation: const BigTextStyleInformation(''),
+      styleInformation: BigTextStyleInformation(
+        body,
+        htmlFormatBigText: true,
+        contentTitle: title,
+        htmlFormatContentTitle: true,
+      ),
+      // Add action buttons
+      actions: channelId == 'prayer_times' ? [
+        const AndroidNotificationAction(
+          'mark_prayed',
+          'Prayed ✓',
+          showsUserInterface: true,
+        ),
+        const AndroidNotificationAction(
+          'snooze',
+          'Remind Later',
+          showsUserInterface: false,
+        ),
+      ] : null,
+      ongoing: false,
+      autoCancel: false, // Don't auto-cancel when tapped
+      category: AndroidNotificationCategory.alarm,
+      fullScreenIntent: channelId == 'prayer_times', // Full screen for prayer times
     );
 
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      interruptionLevel: InterruptionLevel.timeSensitive,
     );
 
     final details = NotificationDetails(
@@ -176,6 +263,8 @@ class PrayerNotificationService {
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: payload,
     );
+    
+    print('✅ Scheduled notification ID: $id for $title');
   }
 
   // Cancel all notifications

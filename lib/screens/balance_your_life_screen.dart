@@ -128,17 +128,17 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
   }
 
   Widget _buildLoadingState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircularProgressIndicator(
             valueColor: AlwaysStoppedAnimation<Color>(
-              const Color(0xFF10B981),
+              Color(0xFF10B981),
             ),
           ),
-          const SizedBox(height: 20),
-          const Text(
+          SizedBox(height: 20),
+          Text(
             'Loading prayer times...',
             style: TextStyle(
               fontSize: 16,
@@ -243,11 +243,11 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
       elevation: 0,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                const Color(0xFF10B981),
-                const Color(0xFF059669),
+                Color(0xFF10B981),
+                Color(0xFF059669),
               ],
             ),
           ),
@@ -260,7 +260,7 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
                 children: [
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.mosque_rounded,
                         color: Colors.white,
                         size: 32,
@@ -341,9 +341,9 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
       ),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             Icons.auto_awesome_rounded,
-            color: const Color(0xFFF59E0B),
+            color: Color(0xFFF59E0B),
             size: 28,
           ),
           const SizedBox(width: 16),
@@ -371,10 +371,10 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
+          gradient: const LinearGradient(
             colors: [
-              const Color(0xFF6366F1),
-              const Color(0xFF8B5CF6),
+              Color(0xFF6366F1),
+              Color(0xFF8B5CF6),
             ],
           ),
           borderRadius: BorderRadius.circular(20),
@@ -386,15 +386,15 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
             ),
           ],
         ),
-        child: Column(
+        child: const Column(
           children: [
             Icon(
               Icons.check_circle_rounded,
               color: Colors.white,
               size: 64,
             ),
-            const SizedBox(height: 16),
-            const Text(
+            SizedBox(height: 16),
+            Text(
               'All Prayers Completed',
               style: TextStyle(
                 fontSize: 22,
@@ -402,8 +402,8 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               'May Allah accept your prayers',
               style: TextStyle(
                 fontSize: 15,
@@ -422,10 +422,10 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               colors: [
-                const Color(0xFF10B981),
-                const Color(0xFF059669),
+                Color(0xFF10B981),
+                Color(0xFF059669),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
@@ -487,7 +487,7 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.access_time_rounded,
                       color: Colors.white,
                       size: 20,
@@ -555,9 +555,9 @@ class _BalanceYourLifeScreenState extends State<BalanceYourLifeScreen> with Sing
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.calendar_today_rounded,
-                  color: const Color(0xFF10B981),
+                  color: Color(0xFF10B981),
                   size: 24,
                 ),
                 const SizedBox(width: 12),

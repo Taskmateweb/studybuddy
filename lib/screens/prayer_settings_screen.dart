@@ -75,10 +75,10 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
       margin: const EdgeInsets.all(20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            const Color(0xFF10B981),
-            const Color(0xFF059669),
+            Color(0xFF10B981),
+            Color(0xFF059669),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -154,9 +154,9 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.mosque_rounded,
-                  color: const Color(0xFF10B981),
+                  color: Color(0xFF10B981),
                   size: 24,
                 ),
                 const SizedBox(width: 12),
@@ -242,7 +242,7 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF10B981),
+            activeThumbColor: const Color(0xFF10B981),
           ),
         ],
       ),
@@ -269,9 +269,9 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.timer_rounded,
-                color: const Color(0xFF3B82F6),
+                color: Color(0xFF3B82F6),
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -347,9 +347,9 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.volume_up_rounded,
-                  color: const Color(0xFFF59E0B),
+                  color: Color(0xFFF59E0B),
                   size: 24,
                 ),
                 const SizedBox(width: 12),
@@ -377,9 +377,9 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
               'Play adhan at prayer time',
               style: TextStyle(fontSize: 13),
             ),
-            secondary: Icon(
+            secondary: const Icon(
               Icons.music_note_rounded,
-              color: const Color(0xFFF59E0B),
+              color: Color(0xFFF59E0B),
             ),
             value: _settings.adhanSoundEnabled,
             onChanged: (value) {
@@ -388,7 +388,7 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
               });
               _saveSettings();
             },
-            activeColor: const Color(0xFF10B981),
+            activeThumbColor: const Color(0xFF10B981),
           ),
           const Divider(height: 1),
           SwitchListTile(
@@ -403,9 +403,9 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
               'Vibrate on notification',
               style: TextStyle(fontSize: 13),
             ),
-            secondary: Icon(
+            secondary: const Icon(
               Icons.vibration_rounded,
-              color: const Color(0xFFF59E0B),
+              color: Color(0xFFF59E0B),
             ),
             value: _settings.vibrateEnabled,
             onChanged: (value) {
@@ -414,7 +414,7 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
               });
               _saveSettings();
             },
-            activeColor: const Color(0xFF10B981),
+            activeThumbColor: const Color(0xFF10B981),
           ),
         ],
       ),
@@ -431,11 +431,11 @@ class _PrayerSettingsScreenState extends State<PrayerSettingsScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Row(
+                content: const Row(
                   children: [
                     Icon(Icons.check_circle, color: Colors.white),
-                    const SizedBox(width: 8),
-                    const Text('Test notification sent!'),
+                    SizedBox(width: 8),
+                    Text('Test notification sent!'),
                   ],
                 ),
                 backgroundColor: const Color(0xFF10B981),

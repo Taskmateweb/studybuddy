@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/routine_model.dart';
+import 'task_notification_service.dart';
 
 class RoutineService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final TaskNotificationService _notificationService = TaskNotificationService();
 
   String get _userId => _auth.currentUser?.uid ?? '';
 
@@ -86,7 +88,17 @@ class RoutineService {
       createdAt: DateTime.now(),
     );
 
-    await _firestore.collection('routines').add(routine.toMap());
+    final docRef = await _firestore.collection('routines').add(routine.toMap());
+    
+    // Schedule notifications for the routine
+    final settings = await _notificationService.loadSettings();
+    if (settings.routinesEnabled) {
+      final routineWithId = routine.copyWith(id: docRef.id);
+      await _notificationService.scheduleWeeklyRoutineNotifications(
+        routineWithId,
+        reminderMinutes: settings.routineReminderMinutes,
+      );
+    }
   }
 
   // Update routine
@@ -95,6 +107,18 @@ class RoutineService {
         .collection('routines')
         .doc(routine.id)
         .update(routine.toMap());
+    
+    // Update notifications
+    final settings = await _notificationService.loadSettings();
+    if (settings.routinesEnabled && routine.isActive) {
+      await _notificationService.cancelRoutineNotification(routine.id);
+      await _notificationService.scheduleWeeklyRoutineNotifications(
+        routine,
+        reminderMinutes: settings.routineReminderMinutes,
+      );
+    } else {
+      await _notificationService.cancelRoutineNotification(routine.id);
+    }
   }
 
   // Toggle routine active status
@@ -102,11 +126,18 @@ class RoutineService {
     await _firestore.collection('routines').doc(routineId).update({
       'isActive': !isActive,
     });
+    
+    // Cancel notifications if deactivating
+    if (isActive) {
+      await _notificationService.cancelRoutineNotification(routineId);
+    }
   }
 
   // Delete routine
   Future<void> deleteRoutine(String routineId) async {
     await _firestore.collection('routines').doc(routineId).delete();
+    // Cancel notifications when routine is deleted
+    await _notificationService.cancelRoutineNotification(routineId);
   }
 
   // Get routine count
@@ -239,5 +270,51 @@ class RoutineService {
     }
 
     return null;
+  }
+
+  // Schedule notifications for all existing routines (for migration/sync)
+  Future<void> rescheduleAllNotifications() async {
+    print('🔔 Starting to reschedule notifications for all existing routines...');
+    try {
+      final settings = await _notificationService.loadSettings();
+      if (!settings.routinesEnabled) {
+        print('⚠️ Routine notifications are disabled, skipping reschedule');
+        return;
+      }
+
+      final snapshot = await _firestore
+          .collection('routines')
+          .where('userId', isEqualTo: _userId)
+          .get();
+
+      int scheduledCount = 0;
+      int skippedCount = 0;
+
+      for (var doc in snapshot.docs) {
+        try {
+          final routine = RoutineItem.fromMap(doc.data(), doc.id);
+          
+          // Only schedule for active routines
+          if (routine.isActive) {
+            await _notificationService.cancelRoutineNotification(routine.id);
+            await _notificationService.scheduleWeeklyRoutineNotifications(
+              routine,
+              reminderMinutes: settings.routineReminderMinutes,
+            );
+            scheduledCount++;
+          } else {
+            skippedCount++;
+          }
+        } catch (e) {
+          print('❌ Error scheduling notification for routine ${doc.id}: $e');
+        }
+      }
+
+      print('✅ Rescheduled $scheduledCount routine notifications');
+      print('⏭️ Skipped $skippedCount routines (inactive)');
+    } catch (e, stackTrace) {
+      print('❌ Error in rescheduleAllNotifications: $e');
+      print('Stack trace: $stackTrace');
+    }
   }
 }

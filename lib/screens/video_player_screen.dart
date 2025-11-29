@@ -304,20 +304,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         color: const Color(0xFF4F46E5).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.link_rounded,
                             size: 14,
                             color: Color(0xFF4F46E5),
                           ),
-                          const SizedBox(width: 4),
+                          SizedBox(width: 4),
                           Text(
                             'Links',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: const Color(0xFF4F46E5),
+                              color: Color(0xFF4F46E5),
                             ),
                           ),
                         ],
@@ -360,10 +360,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.info_outline_rounded,
                     size: 18,
-                    color: const Color(0xFF4F46E5),
+                    color: Color(0xFF4F46E5),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -474,9 +474,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Show loading indicator
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
@@ -484,11 +484,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Opening link...',
-                  style: const TextStyle(fontSize: 14),
+                  style: TextStyle(fontSize: 14),
                 ),
               ),
             ],

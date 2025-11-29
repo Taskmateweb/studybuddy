@@ -227,10 +227,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Manage notification preferences',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Navigate to notifications settings
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Notifications - Coming Soon!')),
-                      );
+                      Navigator.pushNamed(context, '/notification-settings');
                     },
                   ),
                   _buildProfileOption(

@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/task_model.dart';
+import 'task_notification_service.dart';
 
 class TaskService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final TaskNotificationService _notificationService = TaskNotificationService();
 
   String get _userId => _auth.currentUser?.uid ?? '';
 
@@ -97,12 +99,52 @@ class TaskService {
       priority: priority,
     );
 
-    await _firestore.collection('tasks').add(task.toMap());
+    final docRef = await _firestore.collection('tasks').add(task.toMap());
+    
+    // Schedule notification for the task
+    print('🔔 Task created with ID: ${docRef.id}, dueDate: $dueDate');
+    if (dueDate != null) {
+      try {
+        final settings = await _notificationService.loadSettings();
+        print('🔔 Notification settings loaded - tasksEnabled: ${settings.tasksEnabled}, reminderMinutes: ${settings.taskReminderMinutes}');
+        if (settings.tasksEnabled) {
+          final taskWithId = task.copyWith(id: docRef.id);
+          print('🔔 Calling scheduleTaskNotification...');
+          await _notificationService.scheduleTaskNotification(
+            taskWithId,
+            reminderMinutes: settings.taskReminderMinutes,
+          );
+          print('🔔 Notification scheduling completed');
+        } else {
+          print('⚠️ Task notifications are disabled in settings');
+        }
+      } catch (e, stackTrace) {
+        print('❌ Error scheduling notification: $e');
+        print('Stack trace: $stackTrace');
+      }
+    } else {
+      print('⚠️ No due date set for task, skipping notification');
+    }
   }
 
   // Update task
   Future<void> updateTask(Task task) async {
     await _firestore.collection('tasks').doc(task.id).update(task.toMap());
+    
+    // Update notification
+    if (task.dueDate != null && !task.isCompleted) {
+      final settings = await _notificationService.loadSettings();
+      if (settings.tasksEnabled) {
+        await _notificationService.cancelTaskNotification(task.id);
+        await _notificationService.scheduleTaskNotification(
+          task,
+          reminderMinutes: settings.taskReminderMinutes,
+        );
+      }
+    } else {
+      // Cancel notification if task is completed or has no due date
+      await _notificationService.cancelTaskNotification(task.id);
+    }
   }
 
   // Toggle task completion
@@ -111,11 +153,18 @@ class TaskService {
       'isCompleted': !isCompleted,
       'completedAt': !isCompleted ? DateTime.now().toIso8601String() : null,
     });
+    
+    // Cancel notification when task is completed
+    if (!isCompleted) {
+      await _notificationService.cancelTaskNotification(taskId);
+    }
   }
 
   // Delete task
   Future<void> deleteTask(String taskId) async {
     await _firestore.collection('tasks').doc(taskId).delete();
+    // Cancel notification when task is deleted
+    await _notificationService.cancelTaskNotification(taskId);
   }
 
   // Get task count
@@ -151,5 +200,51 @@ class TaskService {
         .where('isCompleted', isEqualTo: true)
         .snapshots()
         .map((snapshot) => snapshot.docs.length);
+  }
+
+  // Schedule notifications for all existing tasks (for migration/sync)
+  Future<void> rescheduleAllNotifications() async {
+    print('🔔 Starting to reschedule notifications for all existing tasks...');
+    try {
+      final settings = await _notificationService.loadSettings();
+      if (!settings.tasksEnabled) {
+        print('⚠️ Task notifications are disabled, skipping reschedule');
+        return;
+      }
+
+      final snapshot = await _firestore
+          .collection('tasks')
+          .where('userId', isEqualTo: _userId)
+          .get();
+
+      int scheduledCount = 0;
+      int skippedCount = 0;
+
+      for (var doc in snapshot.docs) {
+        try {
+          final task = Task.fromMap(doc.data(), doc.id);
+          
+          // Only schedule for incomplete tasks with future due dates
+          if (!task.isCompleted && task.dueDate != null && task.dueDate!.isAfter(DateTime.now())) {
+            await _notificationService.cancelTaskNotification(task.id);
+            await _notificationService.scheduleTaskNotification(
+              task,
+              reminderMinutes: settings.taskReminderMinutes,
+            );
+            scheduledCount++;
+          } else {
+            skippedCount++;
+          }
+        } catch (e) {
+          print('❌ Error scheduling notification for task ${doc.id}: $e');
+        }
+      }
+
+      print('✅ Rescheduled $scheduledCount task notifications');
+      print('⏭️ Skipped $skippedCount tasks (completed or past due date)');
+    } catch (e, stackTrace) {
+      print('❌ Error in rescheduleAllNotifications: $e');
+      print('Stack trace: $stackTrace');
+    }
   }
 }

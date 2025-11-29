@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'package:adhan/adhan.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../models/prayer_time_model.dart';
 
 class PrayerService {
   static const String _cacheKey = 'daily_prayer_times';
   static const String _locationKey = 'saved_location';
   static const String _calculationMethodKey = 'calculation_method';
+  
+  // Using Aladhan API - Free Islamic Prayer Times API
+  static const String _baseUrl = 'http://api.aladhan.com/v1';
 
   // Get current location
   Future<LocationData?> getCurrentLocation() async {
@@ -74,9 +78,139 @@ class PrayerService {
     return null;
   }
 
-  // Calculate prayer times using Adhan package
+  // Calculate prayer times using Aladhan API
   Future<DailyPrayerTimes> calculatePrayerTimes(LocationData location, {DateTime? date}) async {
     final targetDate = date ?? DateTime.now();
+    
+    try {
+      // Fetch from Aladhan API for Dhaka, Bangladesh
+      print('📡 Fetching prayer times from Aladhan API for Dhaka...');
+      
+      // Format date as DD-MM-YYYY
+      final dateStr = '${targetDate.day.toString().padLeft(2, '0')}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.year}';
+      
+      // Dhaka coordinates: 23.8103° N, 90.4125° E
+      // Method 2 = Islamic Society of North America (ISNA)
+      // Method 3 = Muslim World League (MWL) - more accurate for Bangladesh
+      final url = Uri.parse('$_baseUrl/timings/$dateStr?latitude=23.8103&longitude=90.4125&method=3');
+      
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      
+      print('📊 API Response Status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ Successfully fetched prayer times from Aladhan API');
+        
+        // Extract timings from response
+        final timings = data['data']['timings'];
+        
+        // Parse times from API response (format: "HH:mm (timezone)")
+        DateTime parseTime(String timeValue) {
+          try {
+            // Remove timezone info if present (e.g., "04:45 (BST)" -> "04:45")
+            final cleanTime = timeValue.split(' ')[0];
+            final parts = cleanTime.split(':');
+            return DateTime(
+              targetDate.year,
+              targetDate.month,
+              targetDate.day,
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+            );
+          } catch (e) {
+            print('⚠️ Error parsing time: $timeValue, error: $e');
+            return DateTime.now();
+          }
+        }
+        
+        // Create PrayerTime objects from API data
+        final fajr = PrayerTime(
+          name: 'Fajr',
+          arabicName: 'الفجر',
+          time: parseTime(timings['Fajr']),
+          icon: '🌅',
+        );
+        
+        final sunrise = PrayerTime(
+          name: 'Sunrise',
+          arabicName: 'الشروق',
+          time: parseTime(timings['Sunrise']),
+          icon: '☀️',
+        );
+        
+        final dhuhr = PrayerTime(
+          name: 'Dhuhr',
+          arabicName: 'الظهر',
+          time: parseTime(timings['Dhuhr']),
+          icon: '🌞',
+        );
+        
+        final asr = PrayerTime(
+          name: 'Asr',
+          arabicName: 'العصر',
+          time: parseTime(timings['Asr']),
+          icon: '🌤️',
+        );
+        
+        final maghrib = PrayerTime(
+          name: 'Maghrib',
+          arabicName: 'المغرب',
+          time: parseTime(timings['Maghrib']),
+          icon: '🌆',
+        );
+        
+        final isha = PrayerTime(
+          name: 'Isha',
+          arabicName: 'العشاء',
+          time: parseTime(timings['Isha']),
+          icon: '🌙',
+        );
+
+        final midnight = PrayerTime(
+          name: 'Midnight',
+          arabicName: 'منتصف الليل',
+          time: parseTime(timings['Midnight']),
+          icon: '✨',
+        );
+        
+        final dailyTimes = DailyPrayerTimes(
+          date: targetDate,
+          fajr: fajr,
+          sunrise: sunrise,
+          dhuhr: dhuhr,
+          asr: asr,
+          maghrib: maghrib,
+          isha: isha,
+          midnight: midnight,
+          location: 'Dhaka, Bangladesh',
+        );
+        
+        print('✅ Prayer times parsed successfully');
+        print('   Fajr: ${fajr.time.hour}:${fajr.time.minute.toString().padLeft(2, '0')}');
+        print('   Dhuhr: ${dhuhr.time.hour}:${dhuhr.time.minute.toString().padLeft(2, '0')}');
+        print('   Asr: ${asr.time.hour}:${asr.time.minute.toString().padLeft(2, '0')}');
+        print('   Maghrib: ${maghrib.time.hour}:${maghrib.time.minute.toString().padLeft(2, '0')}');
+        print('   Isha: ${isha.time.hour}:${isha.time.minute.toString().padLeft(2, '0')}');
+        
+        // Cache the times
+        await _cachePrayerTimes(dailyTimes);
+        
+        return dailyTimes;
+      } else {
+        print('❌ API Error: ${response.statusCode}');
+        throw Exception('Failed to fetch prayer times from API: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error fetching from Aladhan API: $e');
+      // Fallback to Adhan calculation if API fails
+      return await _calculateWithAdhan(location, targetDate);
+    }
+  }
+
+  // Fallback calculation using Adhan package
+  Future<DailyPrayerTimes> _calculateWithAdhan(LocationData location, DateTime targetDate) async {
+    print('Using fallback Adhan calculation');
     
     // Create Coordinates
     final coordinates = Coordinates(location.latitude, location.longitude);

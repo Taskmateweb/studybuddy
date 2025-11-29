@@ -15,7 +15,7 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
   final TextEditingController _searchController = TextEditingController();
   
   List<YouTubeVideo> _videos = [];
-  List<String> _hiddenVideoIds = []; // Track videos user is not interested in
+  final List<String> _hiddenVideoIds = []; // Track videos user is not interested in
   bool _isLoading = false;
   bool _isLoadingMore = false;
   String? _error;
@@ -526,10 +526,10 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
                 color: const Color(0xFF4F46E5).withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.lightbulb_outline_rounded,
                 size: 64,
-                color: const Color(0xFF4F46E5),
+                color: Color(0xFF4F46E5),
               ),
             ),
             const SizedBox(height: 24),

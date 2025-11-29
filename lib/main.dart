@@ -11,10 +11,24 @@ import 'screens/focus_screen.dart';
 import 'screens/extra_curricular_screen.dart';
 import 'screens/youtube_screen.dart';
 import 'screens/balance_your_life_screen.dart';
+import 'screens/notification_settings_screen.dart';
+import 'services/task_notification_service.dart';
+import 'services/prayer_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // Initialize task notification service
+  final notificationService = TaskNotificationService();
+  await notificationService.initialize();
+  await notificationService.requestPermissions();
+  
+  // Initialize prayer notification service
+  final prayerNotificationService = PrayerNotificationService();
+  await prayerNotificationService.initialize();
+  await prayerNotificationService.requestPermissions();
+  
   runApp(const MyApp());
 }
 
@@ -56,6 +70,7 @@ class MyApp extends StatelessWidget {
         '/extra-curricular': (context) => const ExtraCurricularScreen(),
         '/youtube': (context) => const YouTubeScreen(),
         '/balance-your-life': (context) => const BalanceYourLifeScreen(),
+        '/notification-settings': (context) => const NotificationSettingsScreen(),
       },
     );
   }

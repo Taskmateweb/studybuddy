@@ -7,6 +7,7 @@ import '../services/focus_service.dart';
 import '../models/task_model.dart';
 import '../models/focus_session_model.dart';
 import 'task_detail_sheet.dart';
+import 'stats_screen.dart';
 import '../widgets/celebration_overlay.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,8 +21,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late AnimationController _animationController;
   final user = FirebaseAuth.instance.currentUser;
   int _selectedIndex = 0;
-  StreamSubscription<User?>? _authSub;
-  bool _didRedirectAfterSignOut = false;
 
   @override
   void initState() {
@@ -31,28 +30,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 800),
     );
     _animationController.forward();
-
-    // Redirect to landing automatically when auth state becomes null
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((u) {
-      if (!mounted) return;
-      if (u == null && !_didRedirectAfterSignOut) {
-        _didRedirectAfterSignOut = true;
-        // Defer to next frame to avoid context issues during rebuilds
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final rootContext = Navigator.of(context, rootNavigator: true).context;
-          Navigator.of(rootContext).pushNamedAndRemoveUntil(
-            '/landing',
-            (route) => false,
-          );
-        });
-      }
-    });
   }
 
   @override
   void dispose() {
-    _authSub?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -329,20 +310,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       );
 
                       if (confirm == true && mounted) {
-                        // Sign out first; this will trigger auth listeners and may rebuild widgets
+                        // Sign out - AuthGate will automatically redirect to landing page
                         await FirebaseAuth.instance.signOut();
-
-                        // Use root navigator to avoid disposed bottom sheet context
-                        final rootContext = Navigator.of(context, rootNavigator: true).context;
-
-                        // Schedule navigation after current frame to ensure widget tree stabilizes
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) return;
-                          Navigator.of(rootContext).pushNamedAndRemoveUntil(
-                            '/landing',
-                            (route) => false,
-                          );
-                        });
                       }
                     },
                   ),
@@ -522,140 +491,176 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
 
-        // Stats Cards
+        // Today's Progress Summary Card
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    // Study Hours - include completed and in-progress sessions
-                    Expanded(
-                      child: StreamBuilder<List<FocusSession>>(
-                        stream: FocusService().getTodaySessions(),
-                        builder: (context, snapshot) {
-                          print('📊 Study Hours - Connection State: ${snapshot.connectionState}');
-                          print('📊 Study Hours - Has Error: ${snapshot.hasError}');
-                          if (snapshot.hasError) {
-                            print('📊 Study Hours - Error: ${snapshot.error}');
-                          }
-                          
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return _buildStatCard(
-                              'Study Hours',
-                              '...',
-                              Icons.timer_outlined,
-                              const Color(0xFF667EEA),
-                            );
-                          }
-
-                          final sessions = snapshot.data ?? [];
-                          print('📊 Study Hours - Sessions count: ${sessions.length}');
-                          
-                          final now = DateTime.now();
-
-                          int totalMinutes = 0;
-                          for (var s in sessions) {
-                            print('📊 Session: ${s.taskTitle ?? "No task"}, isCompleted: ${s.isCompleted}, duration: ${s.duration} min');
-                            if (s.isCompleted && s.endTime != null) {
-                              // Completed session: use actual duration
-                              final minutes = s.endTime!.difference(s.startTime).inMinutes;
-                              print('📊 Completed session - adding $minutes minutes');
-                              totalMinutes += minutes;
-                            } else if (!s.isCompleted) {
-                              // In-progress session: count elapsed minutes up to duration limit
-                              final elapsed = now.difference(s.startTime).inMinutes;
-                              final clamped = elapsed.clamp(0, s.duration);
-                              print('📊 In-progress session - elapsed: $elapsed, clamped: $clamped');
-                              totalMinutes += clamped;
+                StreamBuilder<List<Task>>(
+                  stream: TaskService().getUserTasks(),
+                  builder: (context, taskSnapshot) {
+                    return StreamBuilder<List<FocusSession>>(
+                      stream: FocusService().getTodaySessions(),
+                      builder: (context, focusSnapshot) {
+                        return FutureBuilder<int>(
+                          future: ActivityService().getStreak(),
+                          builder: (context, streakSnapshot) {
+                            final tasks = taskSnapshot.data ?? [];
+                            final sessions = focusSnapshot.data ?? [];
+                            final streak = streakSnapshot.data ?? 0;
+                            
+                            final now = DateTime.now();
+                            final todayTasks = tasks.where((t) {
+                              return t.createdAt.year == now.year &&
+                                  t.createdAt.month == now.month &&
+                                  t.createdAt.day == now.day;
+                            }).toList();
+                            final completedToday = todayTasks.where((t) => t.isCompleted).length;
+                            final totalToday = todayTasks.length;
+                            
+                            int totalMinutes = 0;
+                            for (var s in sessions) {
+                              if (s.isCompleted && s.endTime != null) {
+                                totalMinutes += s.endTime!.difference(s.startTime).inMinutes;
+                              } else if (!s.isCompleted) {
+                                final elapsed = now.difference(s.startTime).inMinutes;
+                                totalMinutes += elapsed.clamp(0, s.duration);
+                              }
                             }
-                          }
-
-                          print('📊 Total minutes: $totalMinutes');
-                          final hours = (totalMinutes / 60).toStringAsFixed(1);
-                          print('📊 Display hours: ${hours}h');
-                          
-                          return _buildStatCard(
-                            'Study Hours',
-                            '${hours}h',
-                            Icons.timer_outlined,
-                            const Color(0xFF667EEA),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Tasks Done - Already working
-                    Expanded(
-                      child: StreamBuilder<int>(
-                        stream: TaskService().getCompletedTasksTodayStream(),
-                        builder: (context, snapshot) {
-                          final count = snapshot.data ?? 0;
-                          return _buildStatCard(
-                            'Tasks Done',
-                            '$count',
-                            Icons.check_circle_outline,
-                            const Color(0xFF764BA2),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    // Total Tasks - Incomplete tasks
-                    Expanded(
-                      child: StreamBuilder<List<Task>>(
-                        stream: TaskService().getUserTasks(),
-                        builder: (context, snapshot) {
-                          print('🔷 Total Tasks Card - Connection: ${snapshot.connectionState}');
-                          print('🔷 Total Tasks Card - Has Error: ${snapshot.hasError}');
-                          if (snapshot.hasError) {
-                            print('🔷 Total Tasks Card - Error: ${snapshot.error}');
-                          }
-                          
-                          if (snapshot.hasError) {
-                            return _buildStatCard(
-                              'Total Tasks',
-                              'Error',
-                              Icons.error_outline,
-                              Colors.red,
+                            
+                            final hours = totalMinutes >= 60 
+                                ? '${(totalMinutes / 60).toStringAsFixed(1)}h'
+                                : '${totalMinutes}m';
+                            
+                            // Calculate productivity percentage
+                            final productivityScore = totalToday > 0 
+                                ? (completedToday / totalToday * 100).round()
+                                : 0;
+                            
+                            return Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF667EEA).withOpacity(0.4),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Today\'s Progress',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            'Keep pushing forward!',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (productivityScore > 0)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.emoji_events,
+                                                color: Colors.amber,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '$productivityScore%',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildProgressMetric(
+                                          icon: Icons.timer_outlined,
+                                          label: 'Focus Time',
+                                          value: hours,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 1,
+                                        height: 50,
+                                        color: Colors.white.withOpacity(0.3),
+                                      ),
+                                      Expanded(
+                                        child: _buildProgressMetric(
+                                          icon: Icons.check_circle_outline,
+                                          label: 'Tasks Done',
+                                          value: '$completedToday/$totalToday',
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 1,
+                                        height: 50,
+                                        color: Colors.white.withOpacity(0.3),
+                                      ),
+                                      Expanded(
+                                        child: _buildProgressMetric(
+                                          icon: Icons.local_fire_department,
+                                          label: 'Streak',
+                                          value: '${streak}d',
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             );
-                          }
-                          
-                          final tasks = snapshot.data ?? [];
-                          print('🔷 Total Tasks Card - Tasks: ${tasks.length}');
-                          final incompleteTasks = tasks.where((t) => !t.isCompleted).length;
-                          return _buildStatCard(
-                            'Total Tasks',
-                            '$incompleteTasks',
-                            Icons.assignment_outlined,
-                            const Color(0xFFF093FB),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Activity Streak - Days in a row
-                    Expanded(
-                      child: FutureBuilder<int>(
-                        future: ActivityService().getStreak(),
-                        builder: (context, snapshot) {
-                          final streak = snapshot.data ?? 0;
-                          return _buildStatCard(
-                            'Streak',
-                            '${streak}d',
-                            Icons.local_fire_department,
-                            const Color(0xFFF093FB),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                          },
+                        );
+                      },
+                    );
+                  },
                 ),
               ],
             ),
@@ -1296,102 +1301,176 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
 
-        // Study Streak
+        // Study Streak with Real Data
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(20.0),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF667EEA).withOpacity(0.3),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+            child: FutureBuilder<int>(
+              future: ActivityService().getStreak(),
+              builder: (context, streakSnapshot) {
+                return StreamBuilder<List<DateTime>>(
+                  stream: ActivityService().getActivityDates(),
+                  builder: (context, datesSnapshot) {
+                    final streak = streakSnapshot.data ?? 0;
+                    final activityDates = datesSnapshot.data ?? [];
+                    
+                    // Get last 7 days
+                    final now = DateTime.now();
+                    final last7Days = List.generate(7, (index) {
+                      final date = now.subtract(Duration(days: 6 - index));
+                      return DateTime(date.year, date.month, date.day);
+                    });
+                    
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: streak > 0 
+                              ? [const Color(0xFFFF6B6B), const Color(0xFFFF8E53)]
+                              : [const Color(0xFF667EEA), const Color(0xFF764BA2)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        child: const Icon(
-                          Icons.local_fire_department,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (streak > 0 ? const Color(0xFFFF6B6B) : const Color(0xFF667EEA))
+                                .withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      const Column(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '7 Day Streak! 🔥',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  streak > 0 
+                                      ? Icons.local_fire_department
+                                      : Icons.whatshot_outlined,
+                                  color: streak > 0 ? Colors.orange : Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      streak > 0 
+                                          ? '$streak Day Streak! 🔥'
+                                          : 'Start Your Streak!',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      streak > 0
+                                          ? 'Amazing consistency!'
+                                          : 'Complete tasks to build momentum',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (streak >= 7)
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.emoji_events,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                            ],
                           ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Keep up the great work!',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: List.generate(
+                              7,
+                              (index) {
+                                final date = last7Days[index];
+                                final hasActivity = activityDates.any((d) => 
+                                  d.year == date.year && 
+                                  d.month == date.month && 
+                                  d.day == date.day
+                                );
+                                final isToday = date.year == now.year &&
+                                    date.month == now.month &&
+                                    date.day == now.day;
+                                
+                                return Column(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: hasActivity
+                                            ? Colors.white
+                                            : Colors.white.withOpacity(0.2),
+                                        shape: BoxShape.circle,
+                                        border: isToday
+                                            ? Border.all(
+                                                color: Colors.amber,
+                                                width: 2,
+                                              )
+                                            : null,
+                                      ),
+                                      child: hasActivity
+                                          ? Icon(
+                                              Icons.check,
+                                              color: streak > 0
+                                                  ? const Color(0xFFFF6B6B)
+                                                  : const Color(0xFF667EEA),
+                                              size: 20,
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+                                          [(date.weekday - 1) % 7],
+                                      style: TextStyle(
+                                        color: hasActivity
+                                            ? Colors.white
+                                            : Colors.white.withOpacity(0.5),
+                                        fontSize: 12,
+                                        fontWeight: hasActivity
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: List.generate(
-                      7,
-                      (index) => Column(
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.check,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                    );
+                  },
+                );
+              },
             ),
           ),
         ),
@@ -1438,6 +1517,37 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildProgressMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 
@@ -1696,15 +1806,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildOtherTab() {
-    return Center(
-      child: Text(
-        'Coming Soon',
-        style: TextStyle(
-          fontSize: 24,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      ),
-    );
+    return const StatsScreen();
   }
 
   Widget _buildBottomNav() {

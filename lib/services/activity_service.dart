@@ -327,4 +327,36 @@ class ActivityService {
 
     return streak;
   }
+
+  // Get unique activity dates for visualization
+  Stream<List<DateTime>> getActivityDates() {
+    if (_userId == null) return Stream.value([]);
+
+    final now = DateTime.now();
+    final thirtyDaysAgo = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
+
+    return _firestore
+        .collection('activities')
+        .where('userId', isEqualTo: _userId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(thirtyDaysAgo))
+        .snapshots()
+        .map((snapshot) {
+      final activities = snapshot.docs.map((doc) {
+        return Activity.fromMap(doc.id, doc.data());
+      }).toList();
+
+      // Extract unique dates
+      final uniqueDates = <DateTime>{};
+      for (var activity in activities) {
+        final date = DateTime(
+          activity.date.year,
+          activity.date.month,
+          activity.date.day,
+        );
+        uniqueDates.add(date);
+      }
+
+      return uniqueDates.toList()..sort((a, b) => b.compareTo(a));
+    });
+  }
 }

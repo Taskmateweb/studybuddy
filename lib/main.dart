@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/landing_page.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
@@ -57,7 +58,7 @@ class MyApp extends StatelessWidget {
         fontFamily: 'Roboto',
       ),
       themeMode: ThemeMode.system,
-      home: const LandingPage(),
+      home: const AuthGate(),
       routes: {
         '/landing': (context) => const LandingPage(),
         '/login': (context) => const LoginScreen(),
@@ -71,6 +72,36 @@ class MyApp extends StatelessWidget {
         '/youtube': (context) => const YouTubeScreen(),
         '/balance-your-life': (context) => const BalanceYourLifeScreen(),
         '/notification-settings': (context) => const NotificationSettingsScreen(),
+      },
+    );
+  }
+}
+
+// AuthGate widget to check if user is already logged in
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // Show loading while checking auth state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        
+        // If user is logged in, go to home
+        if (snapshot.hasData) {
+          return const HomeScreen();
+        }
+        
+        // If user is not logged in, show landing page
+        return const LandingPage();
       },
     );
   }

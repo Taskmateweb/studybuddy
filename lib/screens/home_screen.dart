@@ -271,10 +271,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Sign out of your account',
                     isDestructive: true,
                     onTap: () async {
+                      // Close the profile modal first
                       Navigator.pop(context);
+                      
+                      // Show confirmation dialog
                       final confirm = await showDialog<bool>(
                         context: context,
-                        builder: (context) => AlertDialog(
+                        builder: (dialogContext) => AlertDialog(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -291,11 +294,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                           actions: [
                             TextButton(
-                              onPressed: () => Navigator.pop(context, false),
+                              onPressed: () => Navigator.pop(dialogContext, false),
                               child: const Text('Cancel'),
                             ),
                             ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
+                              onPressed: () => Navigator.pop(dialogContext, true),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.red,
                                 shape: RoundedRectangleBorder(
@@ -313,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         await FirebaseAuth.instance.signOut();
                         
                         // Navigate to landing page and clear all routes
-                        if (mounted) {
+                        if (context.mounted) {
                           Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
                             '/landing',
                             (route) => false,

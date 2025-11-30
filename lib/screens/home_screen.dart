@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/task_service.dart';
 import '../services/activity_service.dart';
@@ -272,10 +271,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Sign out of your account',
                     isDestructive: true,
                     onTap: () async {
+                      // Close the profile modal first
                       Navigator.pop(context);
+                      
+                      // Show confirmation dialog
                       final confirm = await showDialog<bool>(
                         context: context,
-                        builder: (context) => AlertDialog(
+                        builder: (dialogContext) => AlertDialog(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -292,11 +294,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                           actions: [
                             TextButton(
-                              onPressed: () => Navigator.pop(context, false),
+                              onPressed: () => Navigator.pop(dialogContext, false),
                               child: const Text('Cancel'),
                             ),
                             ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
+                              onPressed: () => Navigator.pop(dialogContext, true),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.red,
                                 shape: RoundedRectangleBorder(
@@ -309,9 +311,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                       );
 
-                      if (confirm == true && mounted) {
-                        // Sign out - AuthGate will automatically redirect to landing page
+                      if (confirm == true) {
+                        // Sign out from Firebase
                         await FirebaseAuth.instance.signOut();
+                        
+                        // Navigate to landing page and clear all routes
+                        if (context.mounted) {
+                          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                            '/landing',
+                            (route) => false,
+                          );
+                        }
                       }
                     },
                   ),

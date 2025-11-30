@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/task_service.dart';
 import '../services/activity_service.dart';
@@ -309,9 +308,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                       );
 
-                      if (confirm == true && mounted) {
-                        // Sign out - AuthGate will automatically redirect to landing page
+                      if (confirm == true) {
+                        // Sign out from Firebase
                         await FirebaseAuth.instance.signOut();
+                        
+                        // Navigate to landing page and clear all routes
+                        if (mounted) {
+                          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                            '/landing',
+                            (route) => false,
+                          );
+                        }
                       }
                     },
                   ),

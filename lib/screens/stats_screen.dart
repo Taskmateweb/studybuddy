@@ -317,10 +317,24 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                   ),
                 ),
                 const SizedBox(height: 16),
-                StreamBuilder<int>(
-                  stream: _taskService.getCompletedTasksTodayStream(),
+                StreamBuilder<List<Task>>(
+                  stream: _taskService.getUserTasks(),
                   builder: (context, snapshot) {
-                    final completedToday = snapshot.data ?? 0;
+                    if (!snapshot.hasData) {
+                      return const SizedBox.shrink();
+                    }
+                    
+                    final allTasks = snapshot.data!;
+                    final now = DateTime.now();
+                    final todayTasks = allTasks.where((task) {
+                      final taskDate = task.createdAt;
+                      return taskDate.year == now.year &&
+                          taskDate.month == now.month &&
+                          taskDate.day == now.day;
+                    }).toList();
+                    
+                    final completedToday = todayTasks.where((t) => t.isCompleted).length;
+                    final totalToday = todayTasks.length;
                     
                     return Container(
                       padding: const EdgeInsets.all(20),
@@ -352,13 +366,29 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  Text(
-                                    '$completedToday',
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF10B981),
-                                    ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '$completedToday',
+                                        style: const TextStyle(
+                                          fontSize: 40,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF10B981),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 8, left: 4),
+                                        child: Text(
+                                          '/$totalToday',
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -396,11 +426,15 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  completedToday >= 5
-                                      ? 'Great progress!'
-                                      : completedToday >= 3
-                                          ? 'Keep it up!'
-                                          : 'You can do it!',
+                                  totalToday == 0
+                                      ? 'Add some tasks!'
+                                      : completedToday >= totalToday
+                                          ? 'All done! 🎉'
+                                          : completedToday >= totalToday * 0.7
+                                              ? 'Great progress!'
+                                              : completedToday >= totalToday * 0.5
+                                                  ? 'Keep it up!'
+                                                  : 'You can do it!',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,

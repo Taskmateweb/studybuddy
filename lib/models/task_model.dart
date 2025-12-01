@@ -3,6 +3,9 @@ class Task {
   final String title;
   final String? description;
   final DateTime? dueDate;
+  // Optional scheduled window
+  final DateTime? startAt; // combined date + start time
+  final DateTime? endAt;   // combined date + end time
   final bool isCompleted;
   final String userId;
   final DateTime createdAt;
@@ -15,6 +18,8 @@ class Task {
     required this.title,
     this.description,
     this.dueDate,
+    this.startAt,
+    this.endAt,
     required this.isCompleted,
     required this.userId,
     required this.createdAt,
@@ -29,6 +34,8 @@ class Task {
       'title': title,
       'description': description,
       'dueDate': dueDate?.toIso8601String(),
+      'startAt': startAt?.toIso8601String(),
+      'endAt': endAt?.toIso8601String(),
       'isCompleted': isCompleted,
       'userId': userId,
       'createdAt': createdAt.toIso8601String(),
@@ -45,6 +52,8 @@ class Task {
       title: map['title'] ?? '',
       description: map['description'],
       dueDate: map['dueDate'] != null ? DateTime.parse(map['dueDate']) : null,
+      startAt: map['startAt'] != null ? DateTime.parse(map['startAt']) : null,
+      endAt: map['endAt'] != null ? DateTime.parse(map['endAt']) : null,
       isCompleted: map['isCompleted'] ?? false,
       userId: map['userId'] ?? '',
       createdAt: map['createdAt'] != null 
@@ -62,6 +71,8 @@ class Task {
     String? title,
     String? description,
     DateTime? dueDate,
+    DateTime? startAt,
+    DateTime? endAt,
     bool? isCompleted,
     String? userId,
     DateTime? createdAt,
@@ -74,6 +85,8 @@ class Task {
       title: title ?? this.title,
       description: description ?? this.description,
       dueDate: dueDate ?? this.dueDate,
+      startAt: startAt ?? this.startAt,
+      endAt: endAt ?? this.endAt,
       isCompleted: isCompleted ?? this.isCompleted,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,

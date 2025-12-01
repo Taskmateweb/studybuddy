@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/focus_service.dart';
 import '../services/task_service.dart';
 import '../models/task_model.dart';
@@ -23,6 +24,8 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   int _completedPomodoros = 0;
   String? _activeSessionId;
   bool _isScreenLocked = false;
+  DateTime? _sessionStartTime; // Track when the current session started
+  int _totalSessionSeconds = 25 * 60; // Total duration of session
   // Listen to active session changes so UI can restore state when returning
   StreamSubscription? _activeSessionSub;
   
@@ -86,6 +89,8 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
           _completedPomodoros = session.completedPomodoros;
           _remainingSeconds = remaining;
           _focusMinutes = session.duration;
+          _sessionStartTime = session.startTime; // Restore start time
+          _totalSessionSeconds = totalSeconds;
           _isRunning = (session.status == 'focus' || session.status == 'running') && remaining > 0;
           _isPaused = session.status == 'paused';
           _isScreenLocked = _isRunning;
@@ -95,13 +100,20 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
           print('📍 FocusScreen: Restarting timer for remaining: $remaining seconds');
           // Ensure visual animations are running
           _rotationController.repeat();
+          // Enable wake lock
+          WakelockPlus.enable();
           _timer?.cancel();
           _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
             if (!mounted) return;
+            
+            // Recalculate from stored session start time
+            final now = DateTime.now();
+            final elapsed = now.difference(session.startTime).inSeconds;
+            final remaining = (totalSeconds - elapsed).clamp(0, totalSeconds);
+            
             setState(() {
-              if (_remainingSeconds > 0) {
-                _remainingSeconds--;
-              } else {
+              _remainingSeconds = remaining;
+              if (_remainingSeconds <= 0) {
                 _handlePhaseComplete();
               }
             });
@@ -119,6 +131,8 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
     _customTimeController.dispose();
     _audioPlayer.dispose();
     _activeSessionSub?.cancel();
+    // Disable wake lock when disposing screen
+    WakelockPlus.disable();
     super.dispose();
   }
 
@@ -243,28 +257,49 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
       FocusService().updateSessionStatus(_activeSessionId!, 'focus');
     }
     
+    // Set session start time if not already set
+    if (_sessionStartTime == null) {
+      _sessionStartTime = DateTime.now();
+      _totalSessionSeconds = _remainingSeconds;
+    }
+    
     setState(() {
       _isRunning = true;
       _isPaused = false;
       _isScreenLocked = true; // Lock screen when timer starts
     });
     
+    // Enable wake lock to keep screen/CPU awake
+    WakelockPlus.enable();
+    
     _rotationController.repeat();
     
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        if (_remainingSeconds > 0) {
-          _remainingSeconds--;
-        } else {
-          _handlePhaseComplete();
-        }
-      });
+      if (!mounted) return;
+      
+      // Calculate remaining time from start time instead of just decrementing
+      if (_sessionStartTime != null) {
+        final now = DateTime.now();
+        final elapsedSeconds = now.difference(_sessionStartTime!).inSeconds;
+        final remaining = (_totalSessionSeconds - elapsedSeconds).clamp(0, _totalSessionSeconds);
+        
+        setState(() {
+          _remainingSeconds = remaining;
+          if (_remainingSeconds <= 0) {
+            _handlePhaseComplete();
+          }
+        });
+      }
     });
   }
 
   void _pauseTimer() {
     _timer?.cancel();
     _rotationController.stop();
+    
+    // Disable wake lock when paused
+    WakelockPlus.disable();
+    
     setState(() {
       _isRunning = false;
       _isPaused = true;
@@ -279,11 +314,17 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   void _resetTimer() {
     _timer?.cancel();
     _rotationController.reset();
+    
+    // Disable wake lock when reset
+    WakelockPlus.disable();
+    
     setState(() {
       _remainingSeconds = _focusMinutes * 60;
       _isRunning = false;
       _isPaused = false;
       _isScreenLocked = false; // Unlock when reset
+      _sessionStartTime = null; // Reset start time
+      _totalSessionSeconds = _focusMinutes * 60;
     });
     
     if (_activeSessionId != null) {
@@ -295,6 +336,9 @@ class _FocusScreenState extends State<FocusScreen> with TickerProviderStateMixin
   void _handlePhaseComplete() {
     _timer?.cancel();
     _rotationController.reset();
+    
+    // Disable wake lock when session completes
+    WakelockPlus.disable();
     
     setState(() {
       _isRunning = false;

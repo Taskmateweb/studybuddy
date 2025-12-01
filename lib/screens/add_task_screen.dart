@@ -14,7 +14,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   final _descriptionController = TextEditingController();
   final _taskService = TaskService();
   
-  DateTime? _selectedDate;
+  DateTime? _selectedDate; // legacy due date/time (optional)
+  DateTime? _scheduledDate; // date only
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
   String? _selectedCategory;
   int _selectedPriority = 2; // Medium
   bool _isLoading = false;
@@ -36,6 +39,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     super.dispose();
   }
 
+  // ignore: unused_element
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -45,23 +49,39 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     );
     
     if (picked != null) {
+      // Keep backward-compatible due date time picker
       final TimeOfDay? time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
       );
-      
-      if (time != null) {
-        setState(() {
-          _selectedDate = DateTime(
-            picked.year,
-            picked.month,
-            picked.day,
-            time.hour,
-            time.minute,
-          );
-        });
-      }
+      setState(() {
+        _selectedDate = (time != null)
+            ? DateTime(picked.year, picked.month, picked.day, time.hour, time.minute)
+            : DateTime(picked.year, picked.month, picked.day);
+      });
     }
+  }
+
+  Future<void> _pickScheduledDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 0)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _scheduledDate = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  Future<void> _pickStartTime() async {
+    final t = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 9, minute: 0));
+    if (t != null) setState(() => _startTime = t);
+  }
+
+  Future<void> _pickEndTime() async {
+    final t = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 10, minute: 0));
+    if (t != null) setState(() => _endTime = t);
   }
 
   Future<void> _saveTask() async {
@@ -70,12 +90,41 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Build startAt/endAt if date + times provided
+      DateTime? startAt;
+      DateTime? endAt;
+      if (_scheduledDate != null && _startTime != null && _endTime != null) {
+        startAt = DateTime(_scheduledDate!.year, _scheduledDate!.month, _scheduledDate!.day, _startTime!.hour, _startTime!.minute);
+        endAt = DateTime(_scheduledDate!.year, _scheduledDate!.month, _scheduledDate!.day, _endTime!.hour, _endTime!.minute);
+
+        // Validate range
+        if (!endAt.isAfter(startAt)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('End time must be after start time'), backgroundColor: Colors.red),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
+      } else if ((_startTime != null || _endTime != null) && _scheduledDate == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please select a schedule date with start and end time'), backgroundColor: Colors.red),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
+
       await _taskService.addTask(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim().isEmpty 
             ? null 
             : _descriptionController.text.trim(),
-        dueDate: _selectedDate,
+        dueDate: _selectedDate ?? endAt, // prefer using endAt for reminder if available
+        startAt: startAt,
+        endAt: endAt,
         category: _selectedCategory,
         priority: _selectedPriority,
       );
@@ -216,48 +265,107 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
                 const SizedBox(height: 20),
 
-                // Due Date Picker
-                InkWell(
-                  onTap: _selectDate,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outline,
+                // Scheduled Date (New)
+                Text(
+                  'Schedule (Optional)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickScheduledDate,
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.event, color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _scheduledDate == null
+                                      ? 'Select Date'
+                                      : '${_scheduledDate!.day}/${_scheduledDate!.month}/${_scheduledDate!.year}',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            _selectedDate == null
-                                ? 'Select Due Date & Time (Optional)'
-                                : 'Due: ${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year} at ${_selectedDate!.hour}:${_selectedDate!.minute.toString().padLeft(2, '0')}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: _selectedDate == null
-                                  ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
-                                  : Theme.of(context).colorScheme.onSurface,
-                            ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickStartTime,
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.play_circle_outline, color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _startTime == null ? 'Start Time' : _startTime!.format(context),
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        if (_selectedDate != null)
-                          IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              setState(() => _selectedDate = null);
-                            },
-                          ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickEndTime,
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.stop_circle_outlined, color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _endTime == null ? 'End Time' : _endTime!.format(context),
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 32),

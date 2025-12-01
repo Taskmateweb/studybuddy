@@ -103,13 +103,13 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
         SliverToBoxAdapter(
           child: Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF667EEA),
-                  const Color(0xFF764BA2),
+                  Color(0xFF667EEA),
+                  Color(0xFF764BA2),
                 ],
               ),
             ),
@@ -606,7 +606,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                                 entry.value,
                                 percentage,
                               );
-                            }).toList(),
+                            }),
                           ],
                         ],
                       ),
@@ -768,21 +768,21 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                                   color: const Color(0xFF667EEA).withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
                                       Icons.insights_rounded,
                                       size: 14,
-                                      color: const Color(0xFF667EEA),
+                                      color: Color(0xFF667EEA),
                                     ),
-                                    const SizedBox(width: 4),
+                                    SizedBox(width: 4),
                                     Text(
                                       'Tasks',
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF667EEA),
+                                        color: Color(0xFF667EEA),
                                       ),
                                     ),
                                   ],
@@ -855,6 +855,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
         final sessions = snapshot.data!;
         int totalMinutes = 0;
+        // ignore: unused_local_variable
         int completedSessions = 0;
 
         for (var session in sessions) {
@@ -1295,11 +1296,11 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.trending_up, color: Color(0xFFF59E0B), size: 24),
-                  const SizedBox(width: 12),
-                  const Text(
+                  Icon(Icons.trending_up, color: Color(0xFFF59E0B), size: 24),
+                  SizedBox(width: 12),
+                  Text(
                     'Task Overview',
                     style: TextStyle(
                       fontSize: 18,
@@ -2021,9 +2022,9 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [
-                    const Color(0xFF10B981),
-                    const Color(0xFF667EEA),
+                  colors: const [
+                    Color(0xFF10B981),
+                    Color(0xFF667EEA),
                   ],
                   stops: [
                     completedHeight / height.clamp(15.0, 120.0),

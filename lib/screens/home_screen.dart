@@ -514,8 +514,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     return StreamBuilder<List<FocusSession>>(
                       stream: FocusService().getTodaySessions(),
                       builder: (context, focusSnapshot) {
-                        return FutureBuilder<int>(
-                          future: ActivityService().getStreak(),
+                        return StreamBuilder<int>(
+                          stream: TaskService().getTaskStreakStream(),
                           builder: (context, streakSnapshot) {
                             final tasks = taskSnapshot.data ?? [];
                             final sessions = focusSnapshot.data ?? [];
@@ -1232,6 +1232,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       );
                     }
 
+                    // Sort active tasks by startAt (earliest first), fallback to dueDate
+                    activeTasks.sort((a, b) {
+                      final aTime = a.startAt ?? a.dueDate;
+                      final bTime = b.startAt ?? b.dueDate;
+                      if (aTime == null && bTime == null) return 0;
+                      if (aTime == null) return 1;
+                      if (bTime == null) return -1;
+                      return aTime.compareTo(bTime);
+                    });
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1315,21 +1325,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(20.0),
-            child: FutureBuilder<int>(
-              future: ActivityService().getStreak(),
+            child: StreamBuilder<int>(
+              stream: TaskService().getTaskStreakStream(),
               builder: (context, streakSnapshot) {
-                return StreamBuilder<List<DateTime>>(
-                  stream: ActivityService().getActivityDates(),
-                  builder: (context, datesSnapshot) {
+                return StreamBuilder<List<Task>>(
+                  stream: TaskService().getUserTasks(),
+                  builder: (context, tasksSnapshot) {
                     final streak = streakSnapshot.data ?? 0;
-                    final activityDates = datesSnapshot.data ?? [];
+                    final tasks = tasksSnapshot.data ?? [];
                     
-                    // Get last 7 days
+                    // Get completed task dates for last 7 days
                     final now = DateTime.now();
                     final last7Days = List.generate(7, (index) {
                       final date = now.subtract(Duration(days: 6 - index));
                       return DateTime(date.year, date.month, date.day);
                     });
+                    
+                    final completedDates = tasks
+                        .where((t) => t.isCompleted && t.completedAt != null)
+                        .map((t) {
+                          final date = t.completedAt!;
+                          return DateTime(date.year, date.month, date.day);
+                        })
+                        .toSet();
                     
                     return Container(
                       padding: const EdgeInsets.all(20),
@@ -1420,11 +1438,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               7,
                               (index) {
                                 final date = last7Days[index];
-                                final hasActivity = activityDates.any((d) => 
-                                  d.year == date.year && 
-                                  d.month == date.month && 
-                                  d.day == date.day
-                                );
+                                final hasActivity = completedDates.contains(date);
                                 final isToday = date.year == now.year &&
                                     date.month == now.month &&
                                     date.day == now.day;
@@ -1490,45 +1504,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return FadeTransition(
-      opacity: _animationController,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildProgressMetric({
     required IconData icon,
@@ -1725,9 +1700,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     Stack(
                       children: [
                         Text(
-                          task.dueDate != null
-                              ? _formatDueDate(task.dueDate!)
-                              : 'No due date',
+                          _formatSchedule(task),
                           style: TextStyle(
                             fontSize: 14,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
@@ -1812,6 +1785,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return 'Due: Tomorrow';
     } else {
       return 'Due: ${dueDate.day}/${dueDate.month}/${dueDate.year}';
+    }
+  }
+  
+  String _formatSchedule(Task task) {
+    // If start/end present, format window; else fallback to due date
+    if (task.startAt != null && task.endAt != null) {
+      final start = task.startAt!;
+      final end = task.endAt!;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final dateOnly = DateTime(start.year, start.month, start.day);
+      final startStr = _formatTimeWithAmPm(start);
+      final endStr = _formatTimeWithAmPm(end);
+      if (dateOnly == today) {
+        return 'Today: $startStr - $endStr';
+      }
+      return '${start.day}/${start.month}/${start.year}: $startStr - $endStr';
+    }
+    if (task.dueDate != null) {
+      return _formatDueDate(task.dueDate!);
+    }
+    return 'No schedule';
+  }
+
+  String _formatTimeWithAmPm(DateTime time) {
+    final hour = time.hour;
+    final minute = time.minute.toString().padLeft(2, '0');
+    if (hour == 0) {
+      return '12:$minute AM';
+    } else if (hour < 12) {
+      return '$hour:$minute AM';
+    } else if (hour == 12) {
+      return '12:$minute PM';
+    } else {
+      return '${hour - 12}:$minute PM';
     }
   }
 

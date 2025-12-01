@@ -57,20 +57,21 @@ class TaskService {
 
       // Filter tasks for today
       final todaysTasks = allTasks.where((task) {
-        if (task.dueDate == null) return false;
-        final taskDate = DateTime(
-          task.dueDate!.year,
-          task.dueDate!.month,
-          task.dueDate!.day,
-        );
+        // Prefer startAt date if present, else dueDate
+        DateTime? dateRef = task.startAt ?? task.dueDate;
+        if (dateRef == null) return false;
+        final taskDate = DateTime(dateRef.year, dateRef.month, dateRef.day);
         return taskDate == startOfDay;
       }).toList();
 
       // Sort by due date
       todaysTasks.sort((a, b) {
-        if (a.dueDate == null) return 1;
-        if (b.dueDate == null) return -1;
-        return a.dueDate!.compareTo(b.dueDate!);
+        // Sort by startAt if available, else dueDate
+        final aRef = a.startAt ?? a.dueDate;
+        final bRef = b.startAt ?? b.dueDate;
+        if (aRef == null) return 1;
+        if (bRef == null) return -1;
+        return aRef.compareTo(bRef);
       });
 
       return todaysTasks;
@@ -82,6 +83,8 @@ class TaskService {
     required String title,
     String? description,
     DateTime? dueDate,
+    DateTime? startAt,
+    DateTime? endAt,
     String? category,
     int priority = 2,
   }) async {
@@ -92,6 +95,8 @@ class TaskService {
       title: title,
       description: description,
       dueDate: dueDate,
+      startAt: startAt,
+      endAt: endAt,
       isCompleted: false,
       userId: _userId,
       createdAt: DateTime.now(),
@@ -102,8 +107,10 @@ class TaskService {
     final docRef = await _firestore.collection('tasks').add(task.toMap());
     
     // Schedule notification for the task
-    print('🔔 Task created with ID: ${docRef.id}, dueDate: $dueDate');
-    if (dueDate != null) {
+    print('🔔 Task created with ID: ${docRef.id}, dueDate: $dueDate, endAt: $endAt');
+    // Prefer endAt for notification if provided
+    final notificationTime = endAt ?? dueDate;
+    if (notificationTime != null) {
       try {
         final settings = await _notificationService.loadSettings();
         print('🔔 Notification settings loaded - tasksEnabled: ${settings.tasksEnabled}, reminderMinutes: ${settings.taskReminderMinutes}');
@@ -111,7 +118,7 @@ class TaskService {
           final taskWithId = task.copyWith(id: docRef.id);
           print('🔔 Calling scheduleTaskNotification...');
           await _notificationService.scheduleTaskNotification(
-            taskWithId,
+            taskWithId.copyWith(dueDate: notificationTime),
             reminderMinutes: settings.taskReminderMinutes,
           );
           print('🔔 Notification scheduling completed');
@@ -200,6 +207,61 @@ class TaskService {
         .where('isCompleted', isEqualTo: true)
         .snapshots()
         .map((snapshot) => snapshot.docs.length);
+  }
+
+  // Get task streak based on completed tasks (real-time stream)
+  Stream<int> getTaskStreakStream() async* {
+    if (_userId.isEmpty) {
+      yield 0;
+      return;
+    }
+
+    yield* _firestore
+        .collection('tasks')
+        .where('userId', isEqualTo: _userId)
+        .where('isCompleted', isEqualTo: true)
+        .snapshots()
+        .asyncMap((snapshot) async {
+      if (snapshot.docs.isEmpty) return 0;
+
+      final tasks = snapshot.docs
+          .map((doc) => Task.fromMap(doc.data(), doc.id))
+          .where((task) => task.completedAt != null)
+          .toList();
+
+      if (tasks.isEmpty) return 0;
+
+      // Get unique completion dates
+      final completionDates = tasks
+          .map((task) {
+            final date = task.completedAt!;
+            return DateTime(date.year, date.month, date.day);
+          })
+          .toSet()
+          .toList()
+        ..sort((a, b) => b.compareTo(a));
+
+      // Calculate streak
+      final now = DateTime.now();
+      var checkDate = DateTime(now.year, now.month, now.day);
+      int streak = 0;
+
+      for (var i = 0; i < 365; i++) {
+        if (completionDates.contains(checkDate)) {
+          streak++;
+          checkDate = checkDate.subtract(const Duration(days: 1));
+        } else {
+          // Allow grace for today if no tasks completed yet
+          if (i == 0 && checkDate == DateTime(now.year, now.month, now.day)) {
+            checkDate = checkDate.subtract(const Duration(days: 1));
+            continue;
+          }
+          break;
+        }
+      }
+
+      return streak;
+    });
   }
 
   // Schedule notifications for all existing tasks (for migration/sync)

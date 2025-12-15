@@ -8,6 +8,11 @@ import '../models/focus_session_model.dart';
 import 'task_detail_sheet.dart';
 import 'stats_screen.dart';
 import '../widgets/celebration_overlay.dart';
+import 'edit_profile_screen.dart';
+import 'appearance_screen.dart';
+import 'privacy_security_screen.dart';
+import 'help_support_screen.dart';
+import 'about_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -195,9 +200,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Update your personal information',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Navigate to edit profile
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Edit Profile - Coming Soon!')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const EditProfileScreen()),
                       );
                     },
                   ),
@@ -216,9 +221,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Theme and display settings',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Navigate to appearance settings
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Appearance - Coming Soon!')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AppearanceScreen()),
                       );
                     },
                   ),
@@ -228,9 +233,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Manage your account security',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Navigate to privacy settings
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Privacy - Coming Soon!')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const PrivacySecurityScreen()),
                       );
                     },
                   ),
@@ -240,9 +245,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'Get help and contact support',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Navigate to help
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Help - Coming Soon!')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
                       );
                     },
                   ),
@@ -252,9 +257,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     subtitle: 'App version and information',
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Show about dialog
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('StudyBuddy v1.0.0')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AboutScreen()),
                       );
                     },
                   ),

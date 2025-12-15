@@ -56,9 +56,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   _buildTaskNotifications(),
                   _buildRoutineNotifications(),
                   _buildGeneralSettings(),
-                  _buildTestButton(),
-                  _buildPendingNotificationsButton(),
-                  _buildRescheduleButton(),
                   const SizedBox(height: 80),
                 ],
               ),
@@ -67,66 +64,76 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   }
 
   Widget _buildHeaderCard() {
-    return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF667EEA),
-            Color(0xFF764BA2),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF667EEA).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.notifications_active_rounded,
-              color: Colors.white,
-              size: 32,
-            ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Stay On Track',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Never miss a task or routine',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  ),
-                ),
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF667EEA),
+                Color(0xFF764BA2),
               ],
             ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF667EEA).withOpacity(0.3),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.notifications_active_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Stay On Track',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Never miss a task or routine',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildPermissionStatusCard(),
+      ],
     );
+  }
+
+  Widget _buildPermissionStatusCard() {
+    // Permission is handled via AndroidManifest, no warning needed
+    return const SizedBox.shrink();
   }
 
   Widget _buildTaskNotifications() {
@@ -494,283 +501,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     );
   }
 
-  Widget _buildTestButton() {
-    return Container(
-      margin: const EdgeInsets.all(20),
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
-          await _notificationService.showTestNotification();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Test notification sent!'),
-                  ],
-                ),
-                backgroundColor: const Color(0xFF10B981),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-          }
-        },
-        icon: const Icon(Icons.send_rounded),
-        label: const Text(
-          'Send Test Notification',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF667EEA),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 0,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPendingNotificationsButton() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () async {
-          final pendingNotifications = await _notificationService.getPendingNotifications();
-          
-          if (!mounted) return;
-          
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.schedule, color: Color(0xFF667EEA)),
-                  SizedBox(width: 8),
-                  Text('Pending Notifications'),
-                ],
-              ),
-              content: pendingNotifications.isEmpty
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.notifications_off, size: 48, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No notifications scheduled',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                      ],
-                    )
-                  : SizedBox(
-                      width: double.maxFinite,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: pendingNotifications.length,
-                        itemBuilder: (context, index) {
-                          final notification = pendingNotifications[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFF667EEA).withOpacity(0.2),
-                                child: Text(
-                                  '${notification.id}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF667EEA),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                notification.title ?? 'No title',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              subtitle: Text(
-                                notification.body ?? 'No description',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Close'),
-                ),
-              ],
-            ),
-          );
-        },
-        icon: const Icon(Icons.list_alt_rounded),
-        label: const Text(
-          'View Pending Notifications',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF667EEA),
-          side: const BorderSide(color: Color(0xFF667EEA), width: 2),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRescheduleButton() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
-          // Show confirmation dialog
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.sync, color: Color(0xFF667EEA)),
-                  SizedBox(width: 8),
-                  Text('Reschedule Notifications'),
-                ],
-              ),
-              content: const Text(
-                'This will reschedule notifications for all existing tasks and routines with future dates.\n\nThis is useful if you just enabled notifications or changed settings.',
-                style: TextStyle(fontSize: 14),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF667EEA),
-                  ),
-                  child: const Text('Reschedule All'),
-                ),
-              ],
-            ),
-          );
-
-          if (confirm != true || !mounted) return;
-
-          // Show loading
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const Center(
-              child: Card(
-                margin: EdgeInsets.all(32),
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text(
-                        'Rescheduling notifications...',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-
-          try {
-            // Reschedule tasks and routines
-            await _taskService.rescheduleAllNotifications();
-            await _routineService.rescheduleAllNotifications();
-
-            if (!mounted) return;
-            Navigator.pop(context); // Close loading dialog
-
-            // Show success message
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.white),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text('All notifications rescheduled successfully!'),
-                    ),
-                  ],
-                ),
-                backgroundColor: const Color(0xFF10B981),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          } catch (e) {
-            if (!mounted) return;
-            Navigator.pop(context); // Close loading dialog
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text('Error: $e'),
-                    ),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
-          }
-        },
-        icon: const Icon(Icons.sync_rounded),
-        label: const Text(
-          'Reschedule All Notifications',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF10B981),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 2,
-        ),
-      ),
-    );
-  }
+  // Removed: _buildTestButton, _buildPendingNotificationsButton, _buildRescheduleButton
+  // These debug buttons are no longer needed
 }

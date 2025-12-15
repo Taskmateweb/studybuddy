@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'screens/landing_page.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
@@ -15,6 +16,7 @@ import 'screens/balance_your_life_screen.dart';
 import 'screens/notification_settings_screen.dart';
 import 'services/task_notification_service.dart';
 import 'services/prayer_notification_service.dart';
+import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +32,12 @@ void main() async {
   await prayerNotificationService.initialize();
   await prayerNotificationService.requestPermissions();
   
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -38,26 +45,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'StudyBuddy',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF667EEA),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF667EEA),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      themeMode: ThemeMode.system,
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'StudyBuddy',
+          debugShowCheckedModeBanner: false,
+          theme: themeProvider.getThemeData(),
+          darkTheme: themeProvider.getThemeData(),
+          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       home: const AuthGate(),
       routes: {
         '/landing': (context) => const LandingPage(),
@@ -72,6 +67,8 @@ class MyApp extends StatelessWidget {
         '/youtube': (context) => const YouTubeScreen(),
         '/balance-your-life': (context) => const BalanceYourLifeScreen(),
         '/notification-settings': (context) => const NotificationSettingsScreen(),
+      },
+        );
       },
     );
   }

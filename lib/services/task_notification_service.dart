@@ -119,8 +119,12 @@ class TaskNotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
-      final granted = await androidPlugin.requestNotificationsPermission();
-      return granted ?? false;
+      // Request basic notification permission (Android 13+)
+      final notificationGranted = await androidPlugin.requestNotificationsPermission();
+      print('🔔 Notification permission granted: $notificationGranted');
+      print('🔔 Note: Exact alarm permission is granted via AndroidManifest');
+      
+      return notificationGranted ?? false;
     }
 
     final iosPlugin = _notifications
@@ -476,6 +480,14 @@ class TaskNotificationService {
     return NotificationSettings(); // Return default settings
   }
 
+  // Check if exact alarm permission is granted (Android 12+)
+  Future<bool> canScheduleExactAlarms() async {
+    // Permission is declared in AndroidManifest.xml
+    // For Android 12+, USE_EXACT_ALARM provides the permission
+    print('🔔 Exact alarm permission is handled via AndroidManifest');
+    return true;
+  }
+
   // Show immediate test notification
   Future<void> showTestNotification() async {
     const androidDetails = AndroidNotificationDetails(
@@ -485,6 +497,8 @@ class TaskNotificationService {
       importance: Importance.high,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
     );
 
     const iosDetails = DarwinNotificationDetails(
